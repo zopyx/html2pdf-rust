@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PrintCSS Test Document</title>
+    <style>
+        /* Page setup */
+        @page {
+            size: A4;
+            margin: 2cm 2.5cm;
+            
+            @top-center {
+                content: "PrintCSS Test Document";
+                font-size: 10pt;
+                color: #666;
+            }
+            
+            @bottom-center {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 10pt;
+            }
+        }
+        
+        @page :first {
+            @top-center { content: none; }
+            @bottom-center { content: none; }
+        }
+        
+        @page cover {
+            margin: 0;
+            @top-center { content: none; }
+            @bottom-center { content: none; }
+        }
+        
+        /* Base styles */
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: "Times New Roman", Georgia, serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            color: #000;
+        }
+        
+        /* Cover page */
+        .cover {
+            page: cover;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            page-break-after: always;
+        }
+        
+        .cover h1 {
+            font-size: 36pt;
+            margin-bottom: 20pt;
+            color: #1a365d;
+        }
+        
+        .cover .subtitle {
+            font-size: 18pt;
+            color: #4a5568;
+            margin-bottom: 40pt;
+        }
+        
+        .cover .author {
+            font-size: 14pt;
+            margin-bottom: 10pt;
+        }
+        
+        .cover .date {
+            font-size: 12pt;
+            color: #666;
+        }
+        
+        /* Chapter breaks */
+        .chapter {
+            page-break-before: always;
+        }
+        
+        .chapter:first-of-type {
+            page-break-before: auto;
+        }
+        
+        h1.chapter-title {
+            font-size: 24pt;
+            color: #1a365d;
+            margin-bottom: 30pt;
+            border-bottom: 2pt solid #1a365d;
+            padding-bottom: 10pt;
+        }
+        
+        h2 {
+            font-size: 16pt;
+            color: #2d3748;
+            margin-top: 24pt;
+            margin-bottom: 12pt;
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            font-size: 13pt;
+            color: #4a5568;
+            margin-top: 18pt;
+            margin-bottom: 9pt;
+            page-break-after: avoid;
+        }
+        
+        p {
+            margin-bottom: 12pt;
+            text-align: justify;
+            orphans: 3;
+            widows: 3;
+        }
+        
+        /* Prevent breaks inside elements */
+        table, figure, .no-break {
+            page-break-inside: avoid;
+        }
+        
+        /* Lists */
+        ul, ol {
+            margin-bottom: 12pt;
+            orphans: 3;
+            widows: 3;
+        }
+        
+        li {
+            margin-bottom: 6pt;
+        }
+        
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20pt 0;
+            font-size: 10pt;
+        }
+        
+        th, td {
+            border: 0.5pt solid #333;
+            padding: 8pt;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+        }
+        
+        caption {
+            font-weight: bold;
+            margin-bottom: 8pt;
+            text-align: left;
+        }
+        
+        /* Figures */
+        figure {
+            margin: 20pt 0;
+            text-align: center;
+        }
+        
+        figcaption {
+            font-size: 10pt;
+            font-style: italic;
+            margin-top: 8pt;
+            color: #555;
+        }
+        
+        /* Code blocks */
+        pre {
+            background-color: #f5f5f5;
+            border: 0.5pt solid #ddd;
+            padding: 12pt;
+            font-family: "Courier New", monospace;
+            font-size: 9pt;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            page-break-inside: avoid;
+        }
+        
+        code {
+            font-family: "Courier New", monospace;
+            font-size: 10pt;
+            background-color: #f5f5f5;
+            padding: 2pt 4pt;
+        }
+        
+        /* Footnotes */
+        .footnote {
+            font-size: 9pt;
+            vertical-align: super;
+        }
+        
+        /* Running headers for sections */
+        @page :left {
+            @top-left {
+                content: string(chapter-title);
+                font-size: 10pt;
+            }
+        }
+        
+        @page :right {
+            @top-right {
+                content: string(section-title);
+                font-size: 10pt;
+            }
+        }
+        
+        h1 { string-set: chapter-title content(); }
+        h2 { string-set: section-title content(); }
+        
+        /* Print-specific utilities */
+        .print-only {
+            display: block;
+        }
+        
+        .screen-only {
+            display: none;
+        }
+        
+        /* TOC styling */
+        .toc {
+            page-break-after: always;
+        }
+        
+        .toc h2 {
+            text-align: center;
+            border-bottom: none;
+        }
+        
+        .toc ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .toc li {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8pt;
+        }
+        
+        .toc a {
+            text-decoration: none;
+            color: #000;
+        }
+        
+        .toc .page-number {
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+</head>
+<body>
+    <!-- Cover Page -->
+    <div class="cover">
+        <h1>PrintCSS Test Document</h1>
+        <p class="subtitle">Demonstrating Paged Media Features</p>
+        <p class="author">Generated by HTML2PDF</p>
+        <p class="date">2024</p>
+    </div>
+    
+    <!-- Table of Contents -->
+    <div class="toc">
+        <h2>Table of Contents</h2>
+        <ul>
+            <li><a href="#intro">Introduction</a> <span class="page-number">1</span></li>
+            <li><a href="#typography">Typography Features</a> <span class="page-number">1</span></li>
+            <li><a href="#tables">Tables</a> <span class="page-number">2</span></li>
+            <li><a href="#lists">Lists</a> <span class="page-number">2</span></li>
+            <li><a href="#conclusion">Conclusion</a> <span class="page-number">3</span></li>
+        </ul>
+    </div>
+    
+    <!-- Chapter 1 -->
+    <section class="chapter" id="intro">
+        <h1 class="chapter-title">1. Introduction</h1>
+        
+        <p>This document demonstrates various PrintCSS and CSS Paged Media features. These features allow for sophisticated control over how web content is rendered for print output, including page breaks, running headers and footers, and page-specific styling.</p>
+        
+        <p>The @page rule is the cornerstone of CSS Paged Media, allowing you to define the page box, margins, and various page selectors for different types of pages within your document.</p>
+    </section>
+    
+    <!-- Chapter 2 -->
+    <section class="chapter" id="typography">
+        <h1 class="chapter-title">2. Typography Features</h1>
+        
+        <h2>2.1 Widows and Orphans Control</h2>
+        <p>CSS Paged Media provides properties to control widows (lines at the top of a page) and orphans (lines at the bottom of a page). The paragraphs in this document are configured to require at least three lines, preventing awkward page breaks that leave single lines isolated.</p>
+        
+        <p>When a paragraph spans multiple pages, these properties ensure that the break occurs at an appropriate location, maintaining readability and visual appeal. This is particularly important for longer documents such as books, reports, and academic papers.</p>
+        
+        <h2>2.2 Page Break Control</h2>
+        <p>Headings in this document use <code>page-break-after: avoid</code> to prevent them from appearing at the bottom of a page without any following content. This ensures that headings always have at least some content beneath them.</p>
+        
+        <p>Similarly, tables and figures use <code>page-break-inside: avoid</code> to prevent them from being split across pages whenever possible. This maintains the integrity of data presentations and visual elements.</p>
+    </section>
+    
+    <!-- Chapter 3 -->
+    <section class="chapter" id="tables">
+        <h1 class="chapter-title">3. Tables</h1>
+        
+        <p>Tables are common elements in documents that require special consideration for print. The following table demonstrates proper table formatting with borders, padding, and background colors.</p>
+        
+        <table>
+            <caption>Table 1: Sample Data</caption>
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Description</th>
+                    <th>Quantity</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>A001</td>
+                    <td>Standard Widget</td>
+                    <td>100</td>
+                    <td>$25.00</td>
+                </tr>
+                <tr>
+                    <td>A002</td>
+                    <td>Premium Widget</td>
+                    <td>50</td>
+                    <td>$50.00</td>
+                </tr>
+                <tr>
+                    <td>A003</td>
+                    <td>Deluxe Widget</td>
+                    <td>25</td>
+                    <td>$100.00</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <p>The table above should remain intact on a single page if space permits, thanks to the <code>page-break-inside: avoid</code> property.</p>
+    </section>
+    
+    <!-- Chapter 4 -->
+    <section class="chapter" id="lists">
+        <h1 class="chapter-title">4. Lists</h1>
+        
+        <p>Lists are another important element in document structure. Here are examples of both ordered and unordered lists:</p>
+        
+        <h2>4.1 Unordered List</h2>
+        <ul>
+            <li>First item in the list with some additional text to demonstrate how list items wrap when they contain longer content.</li>
+            <li>Second item in the list</li>
+            <li>Third item in the list</li>
+            <li>Fourth item in the list</li>
+        </ul>
+        
+        <h2>4.2 Ordered List</h2>
+        <ol>
+            <li>First step in the process</li>
+            <li>Second step in the process with more detailed explanation of what needs to be done.</li>
+            <li>Third step in the process</li>
+            <li>Fourth step in the process</li>
+        </ol>
+    </section>
+    
+    <!-- Chapter 5 -->
+    <section class="chapter" id="conclusion">
+        <h1 class="chapter-title">5. Conclusion</h1>
+        
+        <p>This document has demonstrated several key features of CSS Paged Media:</p>
+        
+        <ul>
+            <li>Page setup with @page rules</li>
+            <li>Running headers and footers</li>
+            <li>Page break control</li>
+            <li>Widows and orphans control</li>
+            <li>Named pages for different sections</li>
+            <li>Print-specific styling</li>
+        </ul>
+        
+        <p>These features enable the creation of professional-quality print documents from HTML and CSS, bridging the gap between web content and traditional publishing formats.</p>
+        
+        <p>For more information about CSS Paged Media, refer to the W3C specification and browser documentation for the latest support information.</p>
+    </section>
+</body>
+</html>

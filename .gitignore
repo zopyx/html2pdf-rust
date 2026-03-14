@@ -1,0 +1,188 @@
+# =============================================================================
+# Rust
+# =============================================================================
+# Build artifacts
+target/
+Cargo.lock
+
+# Backup files
+**/*.rs.bk
+*.pdb
+
+# =============================================================================
+# IDE and Editors
+# =============================================================================
+# IntelliJ / CLion
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code
+.vscode/
+*.code-workspace
+.history/
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# =============================================================================
+# OS Generated Files
+# =============================================================================
+# macOS
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.nfs*
+.directory
+.Trash-*
+
+# =============================================================================
+# Testing and Coverage
+# =============================================================================
+# Test output
+*.profraw
+*.profdata
+coverage/
+lcov.info
+*.lcov
+tarpaulin-report.html
+cobertura.xml
+
+# Fuzz testing
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/coverage/
+
+# =============================================================================
+# Documentation
+# =============================================================================
+# Generated documentation
+doc/
+target/doc/
+
+# =============================================================================
+# Release and Packaging
+# =============================================================================
+# Distribution files
+dist/
+packages/
+
+# Package files
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.zip
+*.deb
+*.rpm
+*.pkg
+*.dmg
+*.msi
+*.exe
+
+# =============================================================================
+# Environment and Secrets
+# =============================================================================
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Secrets
+*.pem
+*.key
+*.crt
+secrets/
+
+# =============================================================================
+# Logs and Temporary Files
+# =============================================================================
+# Logs
+*.log
+logs/
+log/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+tmp.*
+
+# Cache
+.cache/
+*.cache
+
+# =============================================================================
+# Project Specific
+# =============================================================================
+# Output files
+output/
+out/
+build/
+
+# Example outputs
+examples/*.pdf
+examples/output/
+
+# Benchmark results
+benches/results/
+criterion/
+
+# =============================================================================
+# Docker
+# =============================================================================
+# Docker volumes
+docker-volumes/
+
+# =============================================================================
+# Node.js (for any web components)
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# =============================================================================
+# Python (for any scripts)
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.env/
+.venv/

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Basic HTML to PDF Example</title>
+    <style>
+        /* Page setup - PrintCSS @page rules */
+        @page {
+            size: A4;
+            margin: 72pt;
+            @bottom-center {
+                content: "Page " counter(page);
+                font-size: 10pt;
+                color: #666;
+            }
+        }
+
+        /* Base styles */
+        body {
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600pt;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10pt;
+            font-size: 24pt;
+            margin-top: 0;
+        }
+        
+        h2 {
+            color: #34495e;
+            margin-top: 24pt;
+            font-size: 16pt;
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            color: #555;
+            font-size: 13pt;
+            margin-top: 18pt;
+        }
+        
+        p {
+            text-align: justify;
+            margin-bottom: 1em;
+            orphans: 3;
+            widows: 3;
+        }
+        
+        .highlight {
+            background-color: #fff3cd;
+            padding: 15pt;
+            border-left: 4px solid #ffc107;
+            margin: 20pt 0;
+        }
+        
+        .info-box {
+            background-color: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 4px;
+            padding: 12pt;
+            margin: 16pt 0;
+        }
+        
+        code {
+            font-family: "Courier New", Consolas, monospace;
+            background-color: #f4f4f4;
+            padding: 2pt 6pt;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        
+        pre {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 12pt;
+            overflow-x: auto;
+            font-size: 10pt;
+            line-height: 1.4;
+        }
+        
+        pre code {
+            background: none;
+            padding: 0;
+        }
+        
+        /* Table styles */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20pt 0;
+            font-size: 11pt;
+        }
+        
+        th, td {
+            border: 1pt solid #ddd;
+            padding: 8pt 12pt;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+        
+        /* Lists */
+        ul, ol {
+            margin: 12pt 0;
+            padding-left: 24pt;
+        }
+        
+        li {
+            margin: 6pt 0;
+        }
+        
+        /* Page break utilities */
+        .page-break {
+            page-break-before: always;
+        }
+        
+        .page-break-after {
+            page-break-after: always;
+        }
+        
+        .no-break {
+            page-break-inside: avoid;
+        }
+        
+        /* Cover page */
+        .cover {
+            text-align: center;
+            padding-top: 100pt;
+        }
+        
+        .cover h1 {
+            border: none;
+            font-size: 36pt;
+            color: #2c3e50;
+            margin-bottom: 20pt;
+        }
+        
+        .cover .subtitle {
+            font-size: 18pt;
+            color: #666;
+            margin-bottom: 60pt;
+        }
+        
+        .cover .meta {
+            font-size: 12pt;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <!-- Cover Page -->
+    <div class="cover">
+        <h1>HTML2PDF</h1>
+        <p class="subtitle">A Rust HTML to PDF Converter</p>
+        <p class="meta">Generated from examples/basic.html</p>
+    </div>
+
+    <!-- Page break for content -->
+    <div class="page-break"></div>
+
+    <h1>Basic HTML to PDF Conversion</h1>
+    
+    <p>
+        This example demonstrates the basic HTML to PDF conversion capabilities
+        of the html2pdf converter. It shows how standard HTML and CSS are rendered
+        into a high-quality PDF document with proper typography, layout, and 
+        pagination.
+    </p>
+    
+    <div class="highlight">
+        <strong>Quick Start:</strong> Run <code>cargo run --example complete_example</code> 
+        to see the programmatic API in action, or use the CLI:
+        <code>html2pdf basic.html -o basic.pdf</code>
+    </div>
+    
+    <h2>Features Demonstrated</h2>
+    
+    <ul>
+        <li><strong>Typography:</strong> Custom fonts, sizes, and line heights</li>
+        <li><strong>Colors:</strong> Text and background colors</li>
+        <li><strong>Layout:</strong> Margins, padding, and borders</li>
+        <li><strong>Tables:</strong> Structured data with borders and backgrounds</li>
+        <li><strong>Code formatting:</strong> Monospace fonts and syntax highlighting</li>
+        <li><strong>Page breaks:</strong> Explicit page breaks for sections</li>
+    </ul>
+    
+    <h2>Sample Data Table</h2>
+    
+    <table class="no-break">
+        <thead>
+            <tr>
+                <th>Feature</th>
+                <th>Status</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>HTML5 Parsing</td>
+                <td>✓ Complete</td>
+                <td>Full WHATWG spec compliance</td>
+            </tr>
+            <tr>
+                <td>CSS3 Support</td>
+                <td>✓ Complete</td>
+                <td>Selectors, box model, flexbox</td>
+            </tr>
+            <tr>
+                <td>PrintCSS / Paged Media</td>
+                <td>✓ Complete</td>
+                <td>@page rules, page breaks, margins</td>
+            </tr>
+            <tr>
+                <td>PDF Generation</td>
+                <td>✓ Complete</td>
+                <td>Native Rust implementation</td>
+            </tr>
+            <tr>
+                <td>Font Embedding</td>
+                <td>In Progress</td>
+                <td>TrueType and OpenType support</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Code Example</h2>
+    
+    <p>Here's how to use the library programmatically:</p>
+    
+    <pre><code>use html2pdf::{html_to_pdf, Config, Input};
+
+fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    // Create HTML input
+    let html = r#"&lt;h1&gt;Hello World&lt;/h1&gt;"#;
+    let input = Input::Html(html.to_string());
+    
+    // Configure output
+    let config = Config::default();
+    
+    // Convert to PDF
+    let pdf_bytes = html_to_pdf(&amp;input, &amp;config)?;
+    std::fs::write("output.pdf", pdf_bytes)?;
+    
+    Ok(())
+}</code></pre>
+    
+    <div class="page-break"></div>
+    
+    <h2>Lorem Ipsum Content</h2>
+    
+    <p>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do 
+        eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim 
+        ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut 
+        aliquip ex ea commodo consequat.
+    </p>
+    
+    <p>
+        Duis aute irure dolor in reprehenderit in voluptate velit esse 
+        cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat 
+        cupidatat non proident, sunt in culpa qui officia deserunt mollit 
+        anim id est laborum.
+    </p>
+    
+    <div class="info-box">
+        <strong>Tip:</strong> The html2pdf library supports the W3C PrintCSS 
+        specification, including page margins, headers, footers, and page breaks.
+    </div>
+    
+    <h3>Subsection Example</h3>
+    
+    <p>
+        Sed ut perspiciatis unde omnis iste natus error sit voluptatem 
+        accusantium doloremque laudantium, totam rem aperiam, eaque ipsa 
+        quae ab illo inventore veritatis et quasi architecto beatae vitae 
+        dicta sunt explicabo.
+    </p>
+    
+    <ol>
+        <li>First item in an ordered list</li>
+        <li>Second item with <em>emphasis</em></li>
+        <li>Third item with <strong>strong text</strong></li>
+        <li>Nested lists are supported too</li>
+    </ol>
+    
+    <p>
+        Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit 
+        aut fugit, sed quia consequuntur magni dolores eos qui ratione 
+        voluptatem sequi nesciunt.
+    </p>
+    
+    <h2>Another Section</h2>
+    
+    <p>
+        Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, 
+        consectetur, adipisci velit, sed quia non numquam eius modi tempora 
+        incidunt ut labore et dolore magnam aliquam quaerat voluptatem.
+    </p>
+    
+    <p style="text-align: center; margin-top: 40pt; color: #999; font-size: 10pt;">
+        — End of Document —
+    </p>
+</body>
+</html>
