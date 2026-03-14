@@ -264,30 +264,61 @@ impl Margins {
     }
 }
 
-/// PDF error type
-#[derive(Debug, thiserror::Error)]
-pub enum PdfError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+// Re-export error types from the error module
+pub use crate::error::{
+    ErrorBuilder, ErrorCollector, ErrorContext, ContextualError,
+    ExitCode, Html2PdfError, Html2PdfResult, ParseErrorDetails,
+    ResultExt, SourcePosition, WarningCategory,
+    errors,
+};
 
-    #[error("Parse error: {0}")]
-    Parse(String),
+/// Backward-compatible error type alias
+pub type PdfError = Html2PdfError;
 
-    #[error("Layout error: {0}")]
-    Layout(String),
+/// Backward-compatible result type alias
+pub type Result<T> = Html2PdfResult<T>;
 
-    #[error("Font error: {0}")]
-    Font(String),
+impl Html2PdfError {
+    /// Create a parse error (backward compatibility)
+    pub fn parse(message: impl Into<String>) -> Self {
+        crate::error::errors::html_parse(message)
+    }
 
-    #[error("Image error: {0}")]
-    Image(String),
+    /// Create an IO error from std::io::Error (backward compatibility)
+    pub fn from_io_error(err: std::io::Error) -> Self {
+        crate::error::errors::io(err.to_string())
+    }
 
-    #[error("Invalid color: {0}")]
-    InvalidColor(String),
+    /// Create a layout error (backward compatibility)
+    pub fn layout(message: impl Into<String>) -> Self {
+        crate::error::errors::layout(message)
+    }
+
+    /// Create a font error (backward compatibility)
+    pub fn font(message: impl Into<String>) -> Self {
+        crate::error::errors::font("unknown", message)
+    }
+
+    /// Create an image error (backward compatibility)
+    pub fn image(message: impl Into<String>) -> Self {
+        crate::error::errors::image("unknown", message)
+    }
+
+    /// Create an invalid color error (backward compatibility)
+    pub fn invalid_color(message: impl Into<String>) -> Self {
+        crate::error::errors::validation(format!("Invalid color: {}", message.into()))
+    }
+
+    /// Get the exit code for this error
+    pub fn exit_code(&self) -> i32 {
+        ExitCode::from_error(self).as_i32()
+    }
+
+    /// Format the error with pretty formatting including context
+    pub fn format_pretty(&self) -> String {
+        ContextualError::new(self.clone()).format_pretty()
+    }
 }
-
-/// Result type alias
-pub type Result<T> = std::result::Result<T, PdfError>;
 
 #[cfg(test)]
 mod tests {

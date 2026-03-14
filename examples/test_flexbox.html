@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flexbox Layout Test</title>
+    <style>
+        body {
+            font-family: serif;
+            margin: 20px;
+        }
+        .flex-container {
+            display: flex;
+            background: #ecf0f1;
+            padding: 10px;
+            margin: 20px 0;
+            border: 2px solid #34495e;
+            min-height: 100px;
+        }
+        .flex-item {
+            background: #3498db;
+            color: white;
+            padding: 20px;
+            margin: 5px;
+            min-width: 100px;
+            text-align: center;
+        }
+        
+        /* Flex Direction Tests */
+        .row { flex-direction: row; }
+        .row-reverse { flex-direction: row-reverse; }
+        .column { 
+            flex-direction: column; 
+            height: 300px;
+        }
+        
+        /* Justify Content Tests */
+        .justify-start { justify-content: flex-start; }
+        .justify-end { justify-content: flex-end; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .justify-around { justify-content: space-around; }
+        .justify-evenly { justify-content: space-evenly; }
+        
+        /* Align Items Tests */
+        .align-start { align-items: flex-start; height: 150px; }
+        .align-end { align-items: flex-end; height: 150px; }
+        .align-center { align-items: center; height: 150px; }
+        .align-stretch { align-items: stretch; height: 150px; }
+        
+        /* Flex Wrap Tests */
+        .flex-wrap { 
+            flex-wrap: wrap; 
+            max-width: 500px;
+        }
+        .flex-item-wide {
+            background: #e74c3c;
+            color: white;
+            padding: 20px;
+            margin: 5px;
+            min-width: 150px;
+        }
+        
+        /* Nested Flex */
+        .nested-flex {
+            display: flex;
+            flex-direction: column;
+            background: #2ecc71;
+        }
+        .nested-item {
+            background: #27ae60;
+            padding: 10px;
+            margin: 2px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Flexbox Layout Test</h1>
+    
+    <h2>Flex Direction: Row</h2>
+    <div class="flex-container row">
+        <div class="flex-item">Item 1</div>
+        <div class="flex-item">Item 2</div>
+        <div class="flex-item">Item 3</div>
+    </div>
+    
+    <h2>Flex Direction: Row Reverse</h2>
+    <div class="flex-container row-reverse">
+        <div class="flex-item">Item 1</div>
+        <div class="flex-item">Item 2</div>
+        <div class="flex-item">Item 3</div>
+    </div>
+    
+    <h2>Flex Direction: Column</h2>
+    <div class="flex-container column">
+        <div class="flex-item">Item 1</div>
+        <div class="flex-item">Item 2</div>
+        <div class="flex-item">Item 3</div>
+    </div>
+    
+    <h2>Justify Content</h2>
+    <h3>Flex Start (Default)</h3>
+    <div class="flex-container justify-start">
+        <div class="flex-item">A</div>
+        <div class="flex-item">B</div>
+        <div class="flex-item">C</div>
+    </div>
+    
+    <h3>Flex End</h3>
+    <div class="flex-container justify-end">
+        <div class="flex-item">A</div>
+        <div class="flex-item">B</div>
+        <div class="flex-item">C</div>
+    </div>
+    
+    <h3>Center</h3>
+    <div class="flex-container justify-center">
+        <div class="flex-item">A</div>
+        <div class="flex-item">B</div>
+        <div class="flex-item">C</div>
+    </div>
+    
+    <h3>Space Between</h3>
+    <div class="flex-container justify-between">
+        <div class="flex-item">A</div>
+        <div class="flex-item">B</div>
+        <div class="flex-item">C</div>
+    </div>
+    
+    <h3>Space Around</h3>
+    <div class="flex-container justify-around">
+        <div class="flex-item">A</div>
+        <div class="flex-item">B</div>
+        <div class="flex-item">C</div>
+    </div>
+    
+    <h3>Space Evenly</h3>
+    <div class="flex-container justify-evenly">
+        <div class="flex-item">A</div>
+        <div class="flex-item">B</div>
+        <div class="flex-item">C</div>
+    </div>
+    
+    <h2>Align Items</h2>
+    <h3>Flex Start</h3>
+    <div class="flex-container align-start">
+        <div class="flex-item" style="height: 50px;">Short</div>
+        <div class="flex-item" style="height: 100px;">Tall</div>
+        <div class="flex-item" style="height: 75px;">Medium</div>
+    </div>
+    
+    <h3>Flex End</h3>
+    <div class="flex-container align-end">
+        <div class="flex-item" style="height: 50px;">Short</div>
+        <div class="flex-item" style="height: 100px;">Tall</div>
+        <div class="flex-item" style="height: 75px;">Medium</div>
+    </div>
+    
+    <h3>Center</h3>
+    <div class="flex-container align-center">
+        <div class="flex-item" style="height: 50px;">Short</div>
+        <div class="flex-item" style="height: 100px;">Tall</div>
+        <div class="flex-item" style="height: 75px;">Medium</div>
+    </div>
+    
+    <h3>Stretch</h3>
+    <div class="flex-container align-stretch">
+        <div class="flex-item">Auto height</div>
+        <div class="flex-item">Auto height</div>
+        <div class="flex-item">Auto height</div>
+    </div>
+    
+    <h2>Flex Wrap</h2>
+    <div class="flex-container flex-wrap">
+        <div class="flex-item-wide">Wide Item 1</div>
+        <div class="flex-item-wide">Wide Item 2</div>
+        <div class="flex-item-wide">Wide Item 3</div>
+        <div class="flex-item-wide">Wide Item 4</div>
+    </div>
+    
+    <h2>Nested Flex Containers</h2>
+    <div class="flex-container">
+        <div class="flex-item">Horizontal Item</div>
+        <div class="flex-item nested-flex">
+            <div class="nested-item">Nested 1</div>
+            <div class="nested-item">Nested 2</div>
+        </div>
+        <div class="flex-item">Horizontal Item</div>
+    </div>
+</body>
+</html>

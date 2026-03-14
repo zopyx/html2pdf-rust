@@ -14,20 +14,49 @@
 //!
 //! - **box_model**: CSS box model implementation (margin, border, padding, content)
 //! - **style**: Style computation (cascade, specificity, inheritance)
-//! - **text**: Text layout and line breaking
+//! - **text**: Text layout and line breaking with Unicode support
 //! - **flow**: Normal flow layout (block and inline formatting contexts)
+//! - **flex**: Flexbox layout with flex-direction, justify-content, align-items, flex-wrap
+//! - **grid**: CSS Grid layout with template tracks, auto-placement, fr units, minmax()
+//! - **table**: HTML Table layout with fixed/auto layout, cell spanning, border-collapse
 
 mod box_model;
+mod flex;
 mod flow;
+pub mod form;
+mod grid;
 mod style;
+mod table;
 mod text;
 
 pub use box_model::{
     LayoutBox, BoxType, Dimensions, EdgeSizes,
     build_box_tree, calculate_width, calculate_height, calculate_position,
 };
+pub use form::{
+    FormBox, FormControlType, SelectOption,
+    is_form_element, create_form_box, calculate_form_dimensions,
+};
+pub use table::{
+    TableBox, TableRowBox, TableCellBox, TableColGroup, TableColumn, TableRowGroup,
+    TableLayout, BorderCollapse, CaptionSide, EmptyCells, CellAlign, CellVerticalAlign,
+    TableLayoutContext, build_table_box, layout_table,
+    parse_table_layout, parse_border_collapse, parse_caption_side,
+    parse_empty_cells, parse_border_spacing, is_table_element, table_element_display,
+};
+pub use flex::{
+    FlexContainer, FlexItem, FlexDirection, FlexWrap,
+    JustifyContent, AlignItems, AlignContent,
+    FlexBasis, layout_flex_container,
+};
+pub use grid::{
+    GridContainer, GridItem, GridTrack, GridContext,
+    GridPlacement, GridLine, GridAutoFlow, GridTemplateAreas,
+    TrackSizingFunction, layout_grid_container,
+};
 pub use flow::{
     BlockFormattingContext, InlineFormattingContext,
+    FloatBox, InlineFragment, LineBox,
     layout_block_children, layout_inline_children,
 };
 pub use style::{
@@ -36,15 +65,26 @@ pub use style::{
     TextAlign, TextDecoration, TextTransform,
     WhiteSpace, WordWrap, Visibility, Overflow,
     ZIndex, PageBreak, PageBreakInside,
+    ObjectFit, ObjectPosition, BackgroundSize, BackgroundPosition,
+    BackgroundRepeat, ListStyleType, ListStylePosition,
+    // Table properties
+    BorderCollapse, CaptionSide, EmptyCells, TableLayout,
+    // PrintCSS re-exports
+    StringSetValue,
 };
 pub use text::{
     TextLayout, LineBreaker, Line, TextFragment, TextMetrics,
-    align_line, calculate_text_bounds,
+    align_line, calculate_text_bounds, VerticalAlign,
+    calculate_vertical_align, WordBreak, OverflowWrap,
 };
+
+// Re-export form module
+
 
 use crate::css::Stylesheet;
 use crate::html::{Document, Element};
 use crate::types::{Rect, Size, PaperSize, Margins, Orientation, Result};
+use crate::error::{ErrorCollector, errors, WarningCategory};
 
 /// Layout context holds global layout state
 #[derive(Debug, Clone)]
@@ -63,6 +103,12 @@ pub struct LayoutContext {
     pub containing_block: Rect,
     /// Whether we're in a page break context
     pub in_page_break: bool,
+    /// Viewport width for media queries
+    pub viewport_width: f32,
+    /// Viewport height for media queries
+    pub viewport_height: f32,
+    /// Stacking context root
+    pub stacking_context_root: Option<StackingContext>,
 }
 
 impl LayoutContext {
@@ -77,6 +123,9 @@ impl LayoutContext {
             base_font_size: 12.0,
             containing_block: Rect::new(72.0, 72.0, width - 144.0, height - 144.0),
             in_page_break: false,
+            viewport_width: width,
+            viewport_height: height,
+            stacking_context_root: None,
         }
     }
 
@@ -103,6 +152,9 @@ impl LayoutContext {
                 height - margins.top - margins.bottom,
             ),
             in_page_break: false,
+            viewport_width: width,
+            viewport_height: height,
+            stacking_context_root: None,
         }
     }
 
@@ -115,6 +167,13 @@ impl LayoutContext {
             self.page_size.width - margins.left - margins.right,
             self.page_size.height - margins.top - margins.bottom,
         );
+        self
+    }
+
+    /// Set viewport size
+    pub fn with_viewport(mut self, width: f32, height: f32) -> Self {
+        self.viewport_width = width;
+        self.viewport_height = height;
         self
     }
 
@@ -142,6 +201,11 @@ impl LayoutContext {
     pub fn content_height(&self) -> f32 {
         self.containing_block.height
     }
+
+    /// Create a stacking context
+    pub fn create_stacking_context(&mut self, z_index: i32) -> StackingContext {
+        StackingContext::new(z_index)
+    }
 }
 
 impl Default for LayoutContext {
@@ -150,12 +214,61 @@ impl Default for LayoutContext {
     }
 }
 
+/// Stacking context for z-index handling
+#[derive(Debug, Clone)]
+pub struct StackingContext {
+    /// Z-index value
+    pub z_index: i32,
+    /// Level in the stacking context tree
+    pub level: u32,
+    /// Child stacking contexts
+    pub children: Vec<StackingContext>,
+}
+
+impl StackingContext {
+    pub fn new(z_index: i32) -> Self {
+        Self {
+            z_index,
+            level: 0,
+            children: Vec::new(),
+        }
+    }
+
+    /// Add a child stacking context
+    pub fn add_child(&mut self, child: StackingContext) {
+        self.children.push(child);
+    }
+
+    /// Sort children by z-index (painting order)
+    pub fn sort_by_z_index(&mut self) {
+        self.children.sort_by_key(|c| c.z_index);
+    }
+}
+
+/// Positioned element info for absolute/fixed positioning
+#[derive(Debug, Clone)]
+pub struct PositionedElement {
+    /// The layout box
+    pub box_: LayoutBox,
+    /// Position type
+    pub position_type: Position,
+    /// Z-index
+    pub z_index: ZIndex,
+    /// Offset from containing block
+    pub top: Option<f32>,
+    pub right: Option<f32>,
+    pub bottom: Option<f32>,
+    pub left: Option<f32>,
+}
+
 /// Layout engine that processes documents
 #[derive(Debug)]
 pub struct LayoutEngine {
     context: LayoutContext,
     style_resolver: StyleResolver,
     viewport_width: f32,
+    /// Collected positioned elements (for z-index ordering)
+    positioned_elements: Vec<PositionedElement>,
 }
 
 impl LayoutEngine {
@@ -165,6 +278,7 @@ impl LayoutEngine {
             context: LayoutContext::new(),
             style_resolver: StyleResolver::new(),
             viewport_width: 800.0, // Default viewport width in pixels
+            positioned_elements: Vec::new(),
         }
     }
 
@@ -174,6 +288,7 @@ impl LayoutEngine {
             viewport_width: context.content_width(),
             context,
             style_resolver: StyleResolver::new(),
+            positioned_elements: Vec::new(),
         }
     }
 
@@ -185,17 +300,44 @@ impl LayoutEngine {
     /// Set the viewport width for media queries
     pub fn set_viewport_width(&mut self, width: f32) {
         self.viewport_width = width;
+        self.context.viewport_width = width;
     }
 
-    /// Layout a complete document
+    /// Layout a complete document with error handling
+    ///
+    /// # Arguments
+    ///
+    /// * `document` - The HTML document to layout
+    ///
+    /// # Returns
+    ///
+    /// Returns the root `LayoutBox` on success, or a layout error on failure.
     pub fn layout_document(&mut self, document: &Document) -> Result<LayoutBox> {
+        let mut warnings = ErrorCollector::new();
+
         // Get the body element
-        let body = document.body_element();
+        let body = match document.body_element() {
+            Some(b) => b,
+            None => {
+                return Err(errors::layout_element(
+                    "Document has no body element",
+                    "document"
+                ));
+            }
+        };
 
         // Build the box tree from the DOM
         let mut root_box = build_box_tree(body, &|element| {
             self.style_resolver.resolve_display(element)
         });
+
+        // Warn if box tree is empty
+        if root_box.children.is_empty() {
+            warnings.add_warning(
+                "Document body is empty, no content to layout",
+                WarningCategory::UnsupportedFeature,
+            );
+        }
 
         // Create the initial block formatting context
         let content_area = self.context.content_area();
@@ -203,6 +345,11 @@ impl LayoutEngine {
 
         // Perform layout
         self.layout_box_tree(&mut root_box, &mut bfc)?;
+
+        // Print any layout warnings
+        if warnings.has_warnings() {
+            warnings.print_warnings();
+        }
 
         Ok(root_box)
     }
@@ -218,20 +365,46 @@ impl LayoutEngine {
         root.dimensions.content.y = bfc.containing_block.y;
         root.dimensions.content.width = bfc.containing_block.width;
 
-        // Layout children
-        layout_block_children(
-            root,
-            bfc,
-            &|element| self.style_resolver.compute_style(element, None),
-            self.context.base_font_size,
-        );
+        // Get style for overflow handling
+        let style = root.element()
+            .map(|el| self.style_resolver.compute_style(el, None))
+            .unwrap_or_default();
+
+        // Check if this establishes a new BFC (simplified)
+        let establishes_bfc = style.overflow == Overflow::Hidden || style.float != Float::None;
+
+        if establishes_bfc {
+            // Create nested BFC for overflow:hidden, floats, etc.
+            let mut nested_bfc = BlockFormattingContext::new(bfc.containing_block);
+            layout_block_children(
+                root,
+                &mut nested_bfc,
+                &|element| self.style_resolver.compute_style(element, None),
+                self.context.base_font_size,
+            );
+            // Layout children in normal flow
+            layout_block_children(
+                root,
+                bfc,
+                &|element| self.style_resolver.compute_style(element, None),
+                self.context.base_font_size,
+            );
+        }
 
         // Calculate final height based on content
-        if root.dimensions.content.height == 0.0 {
+        if root.dimensions.content.height == 0.0 || style.height.is_auto() {
             let content_height: f32 = root.children.iter()
                 .map(|child| child.dimensions.margin_box_height())
                 .sum();
             root.dimensions.content.height = content_height;
+        }
+
+        // Handle overflow
+        if style.overflow == Overflow::Hidden {
+            let specified_height = style.height.to_pt(self.context.base_font_size);
+            if specified_height > 0.0 {
+                root.dimensions.content.height = root.dimensions.content.height.min(specified_height);
+            }
         }
 
         root.is_laid_out = true;
@@ -250,6 +423,14 @@ impl LayoutEngine {
         
         // Compute style
         let style = self.style_resolver.compute_style(element, None);
+
+        // Handle flex containers
+        if matches!(style.display, Display::Flex | Display::InlineFlex) {
+            layout_flex_container(&mut box_, &mut bfc, &|el| {
+                self.style_resolver.compute_style(el, Some(&style))
+            }, self.context.base_font_size);
+            return Ok(box_);
+        }
 
         // Calculate dimensions
         calculate_width(
@@ -322,6 +503,12 @@ impl LayoutEngine {
     pub fn context_mut(&mut self) -> &mut LayoutContext {
         &mut self.context
     }
+
+    /// Collect all positioned elements, sorted by z-index
+    pub fn collect_positioned_elements(&self) -> Vec<&PositionedElement> {
+        // Would return positioned elements sorted by z-index for painting
+        self.positioned_elements.iter().collect()
+    }
 }
 
 impl Default for LayoutEngine {
@@ -349,6 +536,8 @@ pub fn layout_document(
 }
 
 /// Create a layout box tree without performing layout
+///
+/// This is useful for inspecting the structure before layout computation.
 pub fn build_layout_tree(document: &Document, stylesheets: &[Stylesheet]) -> Result<LayoutBox> {
     let mut resolver = StyleResolver::new();
     
@@ -356,7 +545,16 @@ pub fn build_layout_tree(document: &Document, stylesheets: &[Stylesheet]) -> Res
         resolver.add_stylesheet(stylesheet.clone());
     }
 
-    let body = document.body_element();
+    let body = match document.body_element() {
+        Some(b) => b,
+        None => {
+            return Err(errors::layout_element(
+                "Document has no body element",
+                "document"
+            ));
+        }
+    };
+    
     let root_box = build_box_tree(body, &|element| {
         resolver.resolve_display(element)
     });
@@ -379,6 +577,25 @@ fn collect_boxes_recursive<'a>(box_: &'a LayoutBox, result: &mut Vec<&'a LayoutB
     for child in &box_.children {
         collect_boxes_recursive(child, result);
     }
+}
+
+/// Sort boxes by z-index for painting order
+pub fn sort_by_z_index(boxes: &mut Vec<&LayoutBox>, style_resolver: &StyleResolver) {
+    boxes.sort_by(|a, b| {
+        let z_a = a.element()
+            .map(|el| style_resolver.compute_style(el, None).z_index)
+            .unwrap_or(ZIndex::Auto);
+        let z_b = b.element()
+            .map(|el| style_resolver.compute_style(el, None).z_index)
+            .unwrap_or(ZIndex::Auto);
+        
+        match (z_a, z_b) {
+            (ZIndex::Number(na), ZIndex::Number(nb)) => na.cmp(&nb),
+            (ZIndex::Auto, ZIndex::Number(_)) => std::cmp::Ordering::Less,
+            (ZIndex::Number(_), ZIndex::Auto) => std::cmp::Ordering::Greater,
+            (ZIndex::Auto, ZIndex::Auto) => std::cmp::Ordering::Equal,
+        }
+    });
 }
 
 /// Print layout tree for debugging
@@ -425,6 +642,8 @@ pub struct PdfBox {
     pub border: EdgeSizes,
     /// Whether this box needs to be rendered
     pub is_visible: bool,
+    /// Z-index for rendering order
+    pub z_index: i32,
 }
 
 impl PdfBox {
@@ -442,6 +661,7 @@ impl PdfBox {
             background_color: None, // Would come from computed style
             border: box_.dimensions.border,
             is_visible: box_.is_laid_out && box_.box_type != BoxType::Anonymous,
+            z_index: 0, // Would need to compute from style
         }
     }
 
@@ -529,5 +749,19 @@ mod tests {
         // Height: 50 + 10 + 4 = 64
         assert_eq!(pdf_box.width, 114.0);
         assert_eq!(pdf_box.height, 64.0);
+    }
+
+    #[test]
+    fn test_stacking_context() {
+        let mut ctx = StackingContext::new(0);
+        ctx.add_child(StackingContext::new(1));
+        ctx.add_child(StackingContext::new(-1));
+        ctx.add_child(StackingContext::new(5));
+        
+        ctx.sort_by_z_index();
+        
+        assert_eq!(ctx.children[0].z_index, -1);
+        assert_eq!(ctx.children[1].z_index, 1);
+        assert_eq!(ctx.children[2].z_index, 5);
     }
 }

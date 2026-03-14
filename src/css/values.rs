@@ -3,6 +3,7 @@
 //! Implements CSS Values and Units Module Level 4
 
 use std::fmt;
+use std::collections::HashMap;
 
 /// CSS value types
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +38,8 @@ pub enum CssValue {
     Color(ColorValue),
     /// Calc expression
     Calc(Box<CssValue>),
+    /// CSS Variable reference (var())
+    Var(String, Option<Box<CssValue>>),
     /// Initial keyword
     Initial,
     /// Inherit keyword
@@ -49,6 +52,8 @@ pub enum CssValue {
     Auto,
     /// None keyword
     None,
+    /// CurrentColor keyword
+    CurrentColor,
 }
 
 impl CssValue {
@@ -76,6 +81,55 @@ impl CssValue {
     pub fn is_auto(&self) -> bool {
         matches!(self, CssValue::Auto) || 
         matches!(self, CssValue::Ident(s) if s == "auto")
+    }
+
+    /// Check if the value is a special keyword (inherit, initial, unset, revert)
+    pub fn is_keyword(&self) -> bool {
+        matches!(self, 
+            CssValue::Initial | CssValue::Inherit | 
+            CssValue::Unset | CssValue::Revert |
+            CssValue::CurrentColor | CssValue::Auto | CssValue::None
+        )
+    }
+
+    /// Get the keyword type if this is a keyword value
+    pub fn as_keyword(&self) -> Option<CssKeyword> {
+        match self {
+            CssValue::Initial => Some(CssKeyword::Initial),
+            CssValue::Inherit => Some(CssKeyword::Inherit),
+            CssValue::Unset => Some(CssKeyword::Unset),
+            CssValue::Revert => Some(CssKeyword::Revert),
+            CssValue::CurrentColor => Some(CssKeyword::CurrentColor),
+            CssValue::Auto => Some(CssKeyword::Auto),
+            CssValue::None => Some(CssKeyword::None),
+            CssValue::Ident(s) => match s.as_str() {
+                "initial" => Some(CssKeyword::Initial),
+                "inherit" => Some(CssKeyword::Inherit),
+                "unset" => Some(CssKeyword::Unset),
+                "revert" => Some(CssKeyword::Revert),
+                "currentColor" => Some(CssKeyword::CurrentColor),
+                "auto" => Some(CssKeyword::Auto),
+                "none" => Some(CssKeyword::None),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Resolve CSS variable if present
+    pub fn resolve_var(&self, variables: &HashMap<String, CssValue>) -> Option<CssValue> {
+        match self {
+            CssValue::Var(name, fallback) => {
+                if let Some(value) = variables.get(name) {
+                    Some(value.clone())
+                } else if let Some(fb) = fallback {
+                    Some((**fb).clone())
+                } else {
+                    None
+                }
+            }
+            _ => Some(self.clone()),
+        }
     }
 }
 
@@ -108,12 +162,20 @@ impl fmt::Display for CssValue {
                 Ok(())
             }
             CssValue::Calc(expr) => write!(f, "calc({})", expr),
+            CssValue::Var(name, fallback) => {
+                if let Some(fb) = fallback {
+                    write!(f, "var({}, {})", name, fb)
+                } else {
+                    write!(f, "var({})", name)
+                }
+            }
             CssValue::Initial => write!(f, "initial"),
             CssValue::Inherit => write!(f, "inherit"),
             CssValue::Unset => write!(f, "unset"),
             CssValue::Revert => write!(f, "revert"),
             CssValue::Auto => write!(f, "auto"),
             CssValue::None => write!(f, "none"),
+            CssValue::CurrentColor => write!(f, "currentColor"),
             CssValue::Ident(s) => write!(f, "{}", s),
             CssValue::HexColor(h) => write!(f, "#{:06x}", h),
             CssValue::Literal(s) => write!(f, "{}", s),
@@ -318,6 +380,100 @@ impl fmt::Display for ColorValue {
             ColorValue::Hex(hex) => write!(f, "#{:06x}", hex),
             ColorValue::CurrentColor => write!(f, "currentColor"),
             ColorValue::Transparent => write!(f, "transparent"),
+        }
+    }
+}
+
+/// CSS special keywords
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CssKeyword {
+    /// Initial value
+    Initial,
+    /// Inherit from parent
+    Inherit,
+    /// Unset (inherit if inheritable, else initial)
+    Unset,
+    /// Revert to previous cascade origin
+    Revert,
+    /// Current color
+    CurrentColor,
+    /// Auto value
+    Auto,
+    /// None value
+    None,
+}
+
+impl fmt::Display for CssKeyword {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CssKeyword::Initial => write!(f, "initial"),
+            CssKeyword::Inherit => write!(f, "inherit"),
+            CssKeyword::Unset => write!(f, "unset"),
+            CssKeyword::Revert => write!(f, "revert"),
+            CssKeyword::CurrentColor => write!(f, "currentColor"),
+            CssKeyword::Auto => write!(f, "auto"),
+            CssKeyword::None => write!(f, "none"),
+        }
+    }
+}
+
+/// CSS variable resolver for var() function
+#[derive(Debug, Clone, Default)]
+pub struct CssVariableResolver {
+    variables: HashMap<String, CssValue>,
+}
+
+impl CssVariableResolver {
+    /// Create a new variable resolver
+    pub fn new() -> Self {
+        Self {
+            variables: HashMap::new(),
+        }
+    }
+
+    /// Set a CSS custom property (--*)
+    pub fn set_variable(&mut self, name: &str, value: CssValue) {
+        let name = if name.starts_with("--") {
+            name.to_string()
+        } else {
+            format!("--{}", name)
+        };
+        self.variables.insert(name, value);
+    }
+
+    /// Get a variable value
+    pub fn get_variable(&self, name: &str) -> Option<&CssValue> {
+        let name = if name.starts_with("--") {
+            name.to_string()
+        } else {
+            format!("--{}", name)
+        };
+        self.variables.get(&name)
+    }
+
+    /// Resolve a value, replacing var() references
+    pub fn resolve(&self, value: &CssValue) -> CssValue {
+        match value {
+            CssValue::Var(name, fallback) => {
+                if let Some(resolved) = self.variables.get(name) {
+                    resolved.clone()
+                } else if let Some(fb) = fallback {
+                    self.resolve(fb)
+                } else {
+                    CssValue::Ident("".to_string())
+                }
+            }
+            CssValue::List(list) => {
+                CssValue::List(list.iter().map(|v| self.resolve(v)).collect())
+            }
+            CssValue::Function(func) => {
+                let mut resolved_func = CssFunction::new(&func.name);
+                for arg in &func.arguments {
+                    resolved_func.add_argument(self.resolve(arg));
+                }
+                CssValue::Function(resolved_func)
+            }
+            _ => value.clone(),
         }
     }
 }

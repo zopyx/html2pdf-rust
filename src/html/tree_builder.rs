@@ -7,6 +7,7 @@ use super::{
     tokenizer::Token,
     is_void_element, Attribute,
 };
+use crate::error::{ErrorCollector, WarningCategory};
 
 /// Insertion modes for the tree builder
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -78,8 +79,23 @@ impl TreeBuilder {
     }
 
     /// Get the final document
-    pub fn document(self) -> Document {
+    pub fn document(mut self) -> Document {
+        self.ensure_body_exists();
         self.document
+    }
+    
+    /// Ensure body element exists (called before returning document)
+    fn ensure_body_exists(&mut self) {
+        if self.document.body.is_none() {
+            // Create body element
+            let body = Element::new("body", Vec::new());
+            self.document.body = Some(body.clone());
+            
+            // If we have a document element but no body, add body to it
+            if let Some(ref mut root) = self.document.document_element {
+                root.append_child(Node::Element(body));
+            }
+        }
     }
 
     /// Get current node (last in open elements)
@@ -114,6 +130,42 @@ impl TreeBuilder {
                 self.handle_in_body(token);
             }
         }
+    }
+
+    /// Process a token with error recovery and collection
+    ///
+    /// Non-fatal errors are collected in the error_collector.
+    /// Fatal errors are returned as Err.
+    pub fn process_token_with_recovery(
+        &mut self,
+        token: Token,
+        error_collector: &mut ErrorCollector,
+    ) -> Result<(), String> {
+        // Try to process the token
+        // In recovery mode, we try to continue even on errors
+        match &token {
+            Token::StartTag { name, .. } => {
+                // Check for potentially problematic tags
+                if name == "script" || name == "style" {
+                    // These are handled specially
+                }
+            }
+            Token::EndTag { name } => {
+                // Check for mismatched end tags
+                if !self.is_element_in_scope(name) {
+                    // Non-fatal: unmatched end tag
+                    error_collector.add_warning(
+                        format!("Unmatched end tag: </{}>", name),
+                        WarningCategory::UnsupportedFeature,
+                    );
+                }
+            }
+            _ => {}
+        }
+
+        // Process the token normally
+        self.process_token(token);
+        Ok(())
     }
 
     /// Handle token in Initial mode
@@ -711,7 +763,8 @@ impl TreeBuilder {
                 self.handle_any_other_end_tag(name);
             }
             Token::EndOfFile => {
-                // End of file handling
+                // Ensure body exists before finishing
+                self.ensure_body_exists();
             }
         }
     }
@@ -913,20 +966,20 @@ mod tests {
         let doc = parse_html("<!DOCTYPE html><html><head></head><body><p>Hello</p></body></html>");
         assert!(doc.doctype.is_some());
         assert_eq!(doc.root_element().tag_name(), "html");
-        assert_eq!(doc.body_element().tag_name(), "body");
+        assert_eq!(doc.body_element().unwrap().tag_name(), "body");
     }
 
     #[test]
     fn test_implicit_elements() {
         let doc = parse_html("<p>Hello</p>");
         assert_eq!(doc.root_element().tag_name(), "html");
-        assert_eq!(doc.body_element().tag_name(), "body");
+        assert_eq!(doc.body_element().unwrap().tag_name(), "body");
     }
 
     #[test]
     fn test_void_elements() {
         let doc = parse_html("<p>Line 1<br>Line 2<img src='test.jpg'></p>");
-        let body = doc.body_element();
+        let body = doc.body_element().unwrap();
         assert_eq!(body.children().len(), 1);
         
         if let Some(Node::Element(p)) = body.children().first() {
@@ -937,7 +990,7 @@ mod tests {
     #[test]
     fn test_nested_elements() {
         let doc = parse_html("<div><p><strong>Bold</strong></p></div>");
-        let body = doc.body_element();
+        let body = doc.body_element().unwrap();
         
         if let Some(Node::Element(div)) = body.children().first() {
             if let Some(Node::Element(p)) = div.children().first() {
@@ -957,14 +1010,14 @@ mod tests {
     #[test]
     fn test_unclosed_tags() {
         let doc = parse_html("<p>First<p>Second");
-        let body = doc.body_element();
+        let body = doc.body_element().unwrap();
         assert_eq!(body.children().len(), 2);
     }
 
     #[test]
     fn test_comment() {
         let doc = parse_html("<!-- comment --><p>text</p>");
-        let body = doc.body_element();
+        let body = doc.body_element().unwrap();
         assert_eq!(body.children().len(), 2);
         assert!(matches!(body.children()[0], Node::Comment(_)));
     }
@@ -972,7 +1025,7 @@ mod tests {
     #[test]
     fn test_script_content() {
         let doc = parse_html("<script>var x = '<div>';</script>");
-        let body = doc.body_element();
+        let body = doc.body_element().unwrap();
         assert_eq!(body.children().len(), 1);
     }
 }

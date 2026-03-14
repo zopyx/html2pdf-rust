@@ -4,6 +4,7 @@
 //! Handles box tree construction from DOM and box dimensions calculations.
 
 use crate::html::{Element, Node, TextNode};
+use crate::layout::form::{FormBox, is_form_element, create_form_box};
 use crate::types::{Rect, Length};
 
 /// Type of layout box
@@ -20,26 +21,46 @@ pub enum BoxType {
     Anonymous,
     /// Text run
     TextRun,
+    /// Image box
+    Image,
     /// Flex container
     Flex,
     /// Grid container
     Grid,
+    /// Form control box
+    Form,
+    /// Table container
+    Table,
+    /// Table row
+    TableRow,
+    /// Table cell
+    TableCell,
 }
 
 impl BoxType {
     /// Check if this is a block-level box type
     pub fn is_block_level(&self) -> bool {
-        matches!(self, BoxType::Block | BoxType::Flex | BoxType::Grid)
+        matches!(self, BoxType::Block | BoxType::Flex | BoxType::Grid | BoxType::Table)
     }
 
     /// Check if this is an inline-level box type
     pub fn is_inline_level(&self) -> bool {
-        matches!(self, BoxType::Inline | BoxType::InlineBlock | BoxType::TextRun)
+        matches!(self, BoxType::Inline | BoxType::InlineBlock | BoxType::TextRun | BoxType::Image | BoxType::Form)
     }
 
     /// Check if this establishes a block formatting context
     pub fn establishes_bfc(&self) -> bool {
-        matches!(self, BoxType::Block | BoxType::Flex | BoxType::Grid | BoxType::Anonymous)
+        matches!(self, BoxType::Block | BoxType::Flex | BoxType::Grid | BoxType::Anonymous | BoxType::Table)
+    }
+
+    /// Check if this is a table-related box type
+    pub fn is_table_type(&self) -> bool {
+        matches!(self, BoxType::Table | BoxType::TableRow | BoxType::TableCell)
+    }
+
+    /// Check if this is a form control box
+    pub fn is_form(&self) -> bool {
+        matches!(self, BoxType::Form)
     }
 }
 
@@ -167,6 +188,327 @@ impl Dimensions {
     }
 }
 
+/// Image intrinsic dimensions
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct IntrinsicSize {
+    /// Natural width of the image
+    pub width: Option<f32>,
+    /// Natural height of the image
+    pub height: Option<f32>,
+    /// Aspect ratio (width / height)
+    pub aspect_ratio: Option<f32>,
+}
+
+impl IntrinsicSize {
+    /// Create from explicit dimensions
+    pub fn new(width: f32, height: f32) -> Self {
+        Self {
+            width: Some(width),
+            height: Some(height),
+            aspect_ratio: Some(width / height),
+        }
+    }
+
+    /// Create with only aspect ratio (e.g., from SVG viewBox)
+    pub fn with_aspect_ratio(ratio: f32) -> Self {
+        Self {
+            width: None,
+            height: None,
+            aspect_ratio: Some(ratio),
+        }
+    }
+}
+
+/// Object-fit property values
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum ObjectFit {
+    /// Fill the box, may distort aspect ratio
+    Fill,
+    /// Preserve aspect ratio, may be cropped
+    #[default]
+    Cover,
+    /// Preserve aspect ratio, may have empty space
+    Contain,
+    /// No resizing
+    None,
+    /// Like 'contain' but if smaller than box, not scaled up
+    ScaleDown,
+}
+
+impl ObjectFit {
+    /// Parse from CSS string value
+    pub fn from_css(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "fill" => ObjectFit::Fill,
+            "cover" => ObjectFit::Cover,
+            "contain" => ObjectFit::Contain,
+            "none" => ObjectFit::None,
+            "scale-down" | "scaledown" => ObjectFit::ScaleDown,
+            _ => ObjectFit::Cover,
+        }
+    }
+}
+
+/// Object-position property (horizontal, vertical)
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ObjectPosition {
+    pub horizontal: f32, // 0.0 = left, 1.0 = right
+    pub vertical: f32,   // 0.0 = top, 1.0 = bottom
+}
+
+impl ObjectPosition {
+    /// Default centered position
+    pub const CENTER: Self = Self { horizontal: 0.5, vertical: 0.5 };
+
+    /// Parse from CSS value like "center" or "50% 75%"
+    pub fn from_css(value: &str) -> Self {
+        let parts: Vec<&str> = value.split_whitespace().collect();
+        
+        let h = parse_position_value(parts.get(0).unwrap_or(&"center"));
+        let v = parse_position_value(parts.get(1).unwrap_or(&"center"));
+        
+        Self { horizontal: h, vertical: v }
+    }
+
+    /// Calculate actual position given container and content sizes
+    pub fn calculate_position(&self, container_size: f32, content_size: f32) -> f32 {
+        // Position is percentage of remaining space
+        let remaining = (container_size - content_size).max(0.0);
+        -(remaining * self.horizontal)
+    }
+}
+
+fn parse_position_value(s: &str) -> f32 {
+    let s = s.trim().to_ascii_lowercase();
+    match s.as_str() {
+        "left" | "top" => 0.0,
+        "center" => 0.5,
+        "right" | "bottom" => 1.0,
+        _ => {
+            // Parse percentage
+            if let Some(num) = s.strip_suffix('%') {
+                num.parse::<f32>().unwrap_or(50.0) / 100.0
+            } else {
+                0.5 // Default to center
+            }
+        }
+    }
+}
+
+/// Image-specific box data
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ImageBox {
+    /// Image source URL or data URI
+    pub src: String,
+    /// Alternative text
+    pub alt: String,
+    /// Intrinsic (natural) dimensions of the image
+    pub intrinsic_size: IntrinsicSize,
+    /// Specified width (from HTML attribute or CSS)
+    pub specified_width: Option<Length>,
+    /// Specified height (from HTML attribute or CSS)
+    pub specified_height: Option<Length>,
+    /// Object-fit property
+    pub object_fit: ObjectFit,
+    /// Object-position property
+    pub object_position: ObjectPosition,
+    /// Whether the image is loaded and ready
+    pub is_loaded: bool,
+}
+
+impl ImageBox {
+    /// Create a new image box
+    pub fn new(src: impl Into<String>) -> Self {
+        Self {
+            src: src.into(),
+            alt: String::new(),
+            intrinsic_size: IntrinsicSize::default(),
+            specified_width: None,
+            specified_height: None,
+            object_fit: ObjectFit::default(),
+            object_position: ObjectPosition::CENTER,
+            is_loaded: false,
+        }
+    }
+
+    /// Set alt text
+    pub fn with_alt(mut self, alt: impl Into<String>) -> Self {
+        self.alt = alt.into();
+        self
+    }
+
+    /// Set intrinsic size
+    pub fn with_intrinsic_size(mut self, width: f32, height: f32) -> Self {
+        self.intrinsic_size = IntrinsicSize::new(width, height);
+        self.is_loaded = true;
+        self
+    }
+
+    /// Calculate the concrete image dimensions based on:
+    /// - Intrinsic size
+    /// - Specified width/height
+    /// - Object-fit
+    /// - Available space
+    pub fn calculate_concrete_size(&self, available_width: f32, available_height: Option<f32>, base_font_size: f32) -> (f32, f32) {
+        // Get specified dimensions
+        let specified_width_pt = self.specified_width
+            .map(|l| if l.is_auto() { None } else { Some(l.to_pt(base_font_size)) })
+            .flatten();
+        
+        let specified_height_pt = self.specified_height
+            .map(|l| if l.is_auto() { None } else { Some(l.to_pt(base_font_size)) })
+            .flatten();
+
+        // Get intrinsic dimensions
+        let intrinsic_width = self.intrinsic_size.width.unwrap_or(300.0);
+        let intrinsic_height = self.intrinsic_size.height.unwrap_or(150.0);
+        let aspect_ratio = self.intrinsic_size.aspect_ratio
+            .unwrap_or(intrinsic_width / intrinsic_height);
+
+        // Calculate used dimensions
+        let (used_width, used_height) = match (specified_width_pt, specified_height_pt) {
+            // Both dimensions specified
+            (Some(w), Some(h)) => (w, h),
+            // Only width specified
+            (Some(w), None) => {
+                let h = if self.object_fit == ObjectFit::Fill {
+                    // Fill uses available height or intrinsic
+                    available_height.unwrap_or(intrinsic_height)
+                } else {
+                    // Preserve aspect ratio
+                    w / aspect_ratio
+                };
+                (w, h)
+            }
+            // Only height specified
+            (None, Some(h)) => {
+                let w = if self.object_fit == ObjectFit::Fill {
+                    // Fill uses available width
+                    available_width
+                } else {
+                    // Preserve aspect ratio
+                    h * aspect_ratio
+                };
+                (w, h)
+            }
+            // Neither specified - use intrinsic or fit to container
+            (None, None) => {
+                // Scale down if needed
+                let mut w = intrinsic_width;
+                let mut h = intrinsic_height;
+                
+                // If intrinsic width exceeds available width, scale down
+                if w > available_width {
+                    let scale = available_width / w;
+                    w = available_width;
+                    h = if self.object_fit == ObjectFit::Fill {
+                        h // Don't scale height in fill mode
+                    } else {
+                        h * scale
+                    };
+                }
+                
+                // Also check height constraint
+                if let Some(max_h) = available_height {
+                    if h > max_h {
+                        let scale = max_h / h;
+                        h = max_h;
+                        if self.object_fit != ObjectFit::Fill {
+                            w = w * scale;
+                        }
+                    }
+                }
+                
+                (w, h)
+            }
+        };
+
+        // Apply scale-down constraint
+        if self.object_fit == ObjectFit::ScaleDown {
+            let max_width = self.intrinsic_size.width.unwrap_or(used_width);
+            let max_height = self.intrinsic_size.height.unwrap_or(used_height);
+            
+            if used_width > max_width || used_height > max_height {
+                let scale_w = max_width / used_width;
+                let scale_h = max_height / used_height;
+                let scale = scale_w.min(scale_h);
+                return (used_width * scale, used_height * scale);
+            }
+        }
+
+        (used_width, used_height)
+    }
+
+    /// Calculate the actual drawing rectangle for the image content
+    /// based on object-fit and object-position
+    pub fn calculate_draw_rect(&self, container_rect: Rect, image_width: f32, image_height: f32) -> Rect {
+        let container_aspect = container_rect.width / container_rect.height.max(0.01);
+        let image_aspect = image_width / image_height.max(0.01);
+
+        let (draw_width, draw_height, draw_x, draw_y) = match self.object_fit {
+            ObjectFit::Fill => {
+                (container_rect.width, container_rect.height, container_rect.x, container_rect.y)
+            }
+            ObjectFit::Contain => {
+                if image_aspect > container_aspect {
+                    // Image is wider - fit to width
+                    let h = container_rect.width / image_aspect;
+                    let y = container_rect.y + (container_rect.height - h) * self.object_position.vertical;
+                    (container_rect.width, h, container_rect.x, y)
+                } else {
+                    // Image is taller - fit to height
+                    let w = container_rect.height * image_aspect;
+                    let x = container_rect.x + (container_rect.width - w) * self.object_position.horizontal;
+                    (w, container_rect.height, x, container_rect.y)
+                }
+            }
+            ObjectFit::Cover => {
+                if image_aspect > container_aspect {
+                    // Image is wider - cover height, overflow width
+                    let h = container_rect.height;
+                    let w = h * image_aspect;
+                    let x = container_rect.x + (container_rect.width - w) * self.object_position.horizontal;
+                    (w, h, x, container_rect.y)
+                } else {
+                    // Image is taller - cover width, overflow height
+                    let w = container_rect.width;
+                    let h = w / image_aspect;
+                    let y = container_rect.y + (container_rect.height - h) * self.object_position.vertical;
+                    (w, h, container_rect.x, y)
+                }
+            }
+            ObjectFit::None => {
+                // No scaling - use original size (clipped to container)
+                let x = container_rect.x + (container_rect.width - image_width) * self.object_position.horizontal;
+                let y = container_rect.y + (container_rect.height - image_height) * self.object_position.vertical;
+                (image_width, image_height, x, y)
+            }
+            ObjectFit::ScaleDown => {
+                // Like contain but don't scale up
+                if image_width <= container_rect.width && image_height <= container_rect.height {
+                    // Image is smaller - no scaling (like none)
+                    let x = container_rect.x + (container_rect.width - image_width) * self.object_position.horizontal;
+                    let y = container_rect.y + (container_rect.height - image_height) * self.object_position.vertical;
+                    (image_width, image_height, x, y)
+                } else {
+                    // Scale down like contain
+                    if image_aspect > container_aspect {
+                        let h = container_rect.width / image_aspect;
+                        let y = container_rect.y + (container_rect.height - h) * self.object_position.vertical;
+                        (container_rect.width, h, container_rect.x, y)
+                    } else {
+                        let w = container_rect.height * image_aspect;
+                        let x = container_rect.x + (container_rect.width - w) * self.object_position.horizontal;
+                        (w, container_rect.height, x, container_rect.y)
+                    }
+                }
+            }
+        };
+
+        Rect::new(draw_x, draw_y, draw_width, draw_height)
+    }
+}
+
 /// A layout box representing a node in the box tree
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutBox {
@@ -180,6 +522,10 @@ pub struct LayoutBox {
     pub children: Vec<LayoutBox>,
     /// Text content (for text runs)
     pub text_content: Option<String>,
+    /// Image data (for image boxes)
+    pub image_data: Option<ImageBox>,
+    /// Form data (for form control boxes)
+    pub form_data: Option<FormBox>,
     /// Whether this box has been laid out
     pub is_laid_out: bool,
 }
@@ -192,6 +538,8 @@ impl LayoutBox {
             dimensions: Dimensions::default(),
             children: Vec::new(),
             text_content: None,
+            image_data: None,
+            form_data: None,
             is_laid_out: false,
         }
     }
@@ -215,6 +563,20 @@ impl LayoutBox {
     pub fn text_box(text: &TextNode) -> Self {
         let mut box_ = Self::new(BoxType::TextRun, Some(Node::Text(text.clone())));
         box_.text_content = Some(text.data.clone());
+        box_
+    }
+
+    /// Create an image box
+    pub fn image_box(element: &Element, src: impl Into<String>) -> Self {
+        let mut box_ = Self::new(BoxType::Image, Some(Node::Element(element.clone())));
+        box_.image_data = Some(ImageBox::new(src));
+        box_
+    }
+
+    /// Create a form control box
+    pub fn form_box(element: &Element, form_data: FormBox) -> Self {
+        let mut box_ = Self::new(BoxType::Form, Some(Node::Element(element.clone())));
+        box_.form_data = Some(form_data);
         box_
     }
 
@@ -263,12 +625,69 @@ impl LayoutBox {
     pub fn tag_name(&self) -> Option<&str> {
         Some(self.element()?.tag_name())
     }
+
+    /// Get image data if this is an image box
+    pub fn image_data(&self) -> Option<&ImageBox> {
+        self.image_data.as_ref()
+    }
+
+    /// Get mutable image data if this is an image box
+    pub fn image_data_mut(&mut self) -> Option<&mut ImageBox> {
+        self.image_data.as_mut()
+    }
+
+    /// Get form data if this is a form box
+    pub fn form_data(&self) -> Option<&FormBox> {
+        self.form_data.as_ref()
+    }
+
+    /// Get mutable form data if this is a form box
+    pub fn form_data_mut(&mut self) -> Option<&mut FormBox> {
+        self.form_data.as_mut()
+    }
 }
 
 /// Build a box tree from a DOM element
 pub fn build_box_tree(element: &Element, display_resolver: &dyn Fn(&Element) -> BoxType) -> LayoutBox {
     let box_type = display_resolver(element);
     let mut box_ = LayoutBox::new(box_type, Some(Node::Element(element.clone())));
+
+    // Special handling for img elements
+    if element.tag_name().eq_ignore_ascii_case("img") {
+        let src = element.attr("src").unwrap_or("").to_string();
+        let mut img_box = LayoutBox::image_box(element, src);
+        
+        // Parse width/height attributes
+        if let Some(width_attr) = element.attr("width") {
+            if let Ok(w) = width_attr.parse::<f32>() {
+                if let Some(img_data) = img_box.image_data_mut() {
+                    img_data.specified_width = Some(Length::Px(w));
+                }
+            }
+        }
+        if let Some(height_attr) = element.attr("height") {
+            if let Ok(h) = height_attr.parse::<f32>() {
+                if let Some(img_data) = img_box.image_data_mut() {
+                    img_data.specified_height = Some(Length::Px(h));
+                }
+            }
+        }
+        
+        return img_box;
+    }
+
+    // Special handling for form elements
+    if is_form_element(element.tag_name()) {
+        if let Some(form_data) = create_form_box(element) {
+            // Skip hidden inputs entirely
+            if form_data.control_type.is_visible() {
+                return LayoutBox::form_box(element, form_data);
+            } else {
+                // Return an anonymous box for hidden inputs (won't be rendered)
+                return LayoutBox::anonymous_box();
+            }
+        }
+    }
 
     match box_type {
         BoxType::Block | BoxType::Flex | BoxType::Grid => {
@@ -280,6 +699,16 @@ pub fn build_box_tree(element: &Element, display_resolver: &dyn Fn(&Element) -> 
         BoxType::InlineBlock => {
             // Inline-block contains both inline and block content
             build_inline_children(element, &mut box_, display_resolver);
+        }
+        BoxType::Table => {
+            // Table elements build their own structure
+            build_table_children(element, &mut box_, display_resolver);
+        }
+        BoxType::TableRow => {
+            build_table_row_children(element, &mut box_, display_resolver);
+        }
+        BoxType::TableCell => {
+            build_table_cell_children(element, &mut box_, display_resolver);
         }
         _ => {}
     }
@@ -298,6 +727,55 @@ fn build_block_children(
     for child in element.children() {
         match child {
             Node::Element(child_el) => {
+                // Special handling for img elements (they're inline by default)
+                if child_el.tag_name().eq_ignore_ascii_case("img") {
+                    // Flush any buffered inline content
+                    if !inline_buffer.is_empty() {
+                        let anon = build_anonymous_box(&inline_buffer, display_resolver);
+                        parent_box.append_child(anon);
+                        inline_buffer.clear();
+                    }
+                    // Add image box
+                    let src = child_el.attr("src").unwrap_or("").to_string();
+                    let mut img_box = LayoutBox::image_box(child_el, src);
+                    
+                    if let Some(width_attr) = child_el.attr("width") {
+                        if let Ok(w) = width_attr.parse::<f32>() {
+                            if let Some(img_data) = img_box.image_data_mut() {
+                                img_data.specified_width = Some(Length::Px(w));
+                            }
+                        }
+                    }
+                    if let Some(height_attr) = child_el.attr("height") {
+                        if let Ok(h) = height_attr.parse::<f32>() {
+                            if let Some(img_data) = img_box.image_data_mut() {
+                                img_data.specified_height = Some(Length::Px(h));
+                            }
+                        }
+                    }
+                    
+                    parent_box.append_child(img_box);
+                    continue;
+                }
+
+                // Special handling for form elements
+                if is_form_element(child_el.tag_name()) {
+                    // Flush any buffered inline content
+                    if !inline_buffer.is_empty() {
+                        let anon = build_anonymous_box(&inline_buffer, display_resolver);
+                        parent_box.append_child(anon);
+                        inline_buffer.clear();
+                    }
+                    // Add form box
+                    if let Some(form_data) = create_form_box(child_el) {
+                        if form_data.control_type.is_visible() {
+                            let form_box = LayoutBox::form_box(child_el, form_data);
+                            parent_box.append_child(form_box);
+                        }
+                    }
+                    continue;
+                }
+
                 let child_display = display_resolver(child_el);
 
                 if child_display.is_block_level() {
@@ -341,6 +819,41 @@ fn build_inline_children(
     for child in element.children() {
         match child {
             Node::Element(child_el) => {
+                // Special handling for img elements
+                if child_el.tag_name().eq_ignore_ascii_case("img") {
+                    let src = child_el.attr("src").unwrap_or("").to_string();
+                    let mut img_box = LayoutBox::image_box(child_el, src);
+                    
+                    if let Some(width_attr) = child_el.attr("width") {
+                        if let Ok(w) = width_attr.parse::<f32>() {
+                            if let Some(img_data) = img_box.image_data_mut() {
+                                img_data.specified_width = Some(Length::Px(w));
+                            }
+                        }
+                    }
+                    if let Some(height_attr) = child_el.attr("height") {
+                        if let Ok(h) = height_attr.parse::<f32>() {
+                            if let Some(img_data) = img_box.image_data_mut() {
+                                img_data.specified_height = Some(Length::Px(h));
+                            }
+                        }
+                    }
+                    
+                    parent_box.append_child(img_box);
+                    continue;
+                }
+
+                // Special handling for form elements
+                if is_form_element(child_el.tag_name()) {
+                    if let Some(form_data) = create_form_box(child_el) {
+                        if form_data.control_type.is_visible() {
+                            let form_box = LayoutBox::form_box(child_el, form_data);
+                            parent_box.append_child(form_box);
+                        }
+                    }
+                    continue;
+                }
+
                 let child_box = build_box_tree(child_el, display_resolver);
                 parent_box.append_child(child_box);
             }
@@ -377,6 +890,59 @@ fn build_anonymous_box(
     }
 
     anon
+}
+
+/// Build children for a table element
+fn build_table_children(
+    element: &Element,
+    parent_box: &mut LayoutBox,
+    display_resolver: &dyn Fn(&Element) -> BoxType,
+) {
+    for child in element.children() {
+        if let Node::Element(child_el) = child {
+            let tag_name = child_el.tag_name().to_ascii_lowercase();
+            
+            match tag_name.as_str() {
+                "caption" | "colgroup" | "col" | "thead" | "tbody" | "tfoot" | "tr" => {
+                    let child_box = build_box_tree(child_el, display_resolver);
+                    parent_box.append_child(child_box);
+                }
+                _ => {
+                    // Other elements are treated as block children
+                    let child_box = build_box_tree(child_el, display_resolver);
+                    parent_box.append_child(child_box);
+                }
+            }
+        }
+    }
+}
+
+/// Build children for a table row element
+fn build_table_row_children(
+    element: &Element,
+    parent_box: &mut LayoutBox,
+    display_resolver: &dyn Fn(&Element) -> BoxType,
+) {
+    for child in element.children() {
+        if let Node::Element(child_el) = child {
+            let tag_name = child_el.tag_name().to_ascii_lowercase();
+            
+            if tag_name == "td" || tag_name == "th" {
+                let child_box = build_box_tree(child_el, display_resolver);
+                parent_box.append_child(child_box);
+            }
+        }
+    }
+}
+
+/// Build children for a table cell element
+fn build_table_cell_children(
+    element: &Element,
+    parent_box: &mut LayoutBox,
+    display_resolver: &dyn Fn(&Element) -> BoxType,
+) {
+    // Table cells contain normal flow content
+    build_block_children(element, parent_box, display_resolver);
 }
 
 /// Calculate width based on containing block and computed values
@@ -575,5 +1141,96 @@ mod tests {
         
         assert_eq!(box_.box_type, BoxType::TextRun);
         assert_eq!(box_.text_content, Some("Hello World".to_string()));
+    }
+
+    #[test]
+    fn test_image_box_creation() {
+        let el = Element::new("img", vec![]);
+        let box_ = LayoutBox::image_box(&el, "test.png");
+        
+        assert_eq!(box_.box_type, BoxType::Image);
+        assert!(box_.image_data.is_some());
+        assert_eq!(box_.image_data.unwrap().src, "test.png");
+    }
+
+    #[test]
+    fn test_intrinsic_size() {
+        let size = IntrinsicSize::new(800.0, 600.0);
+        assert_eq!(size.width, Some(800.0));
+        assert_eq!(size.height, Some(600.0));
+        assert_eq!(size.aspect_ratio, Some(800.0 / 600.0));
+    }
+
+    #[test]
+    fn test_object_fit_parse() {
+        assert_eq!(ObjectFit::from_css("fill"), ObjectFit::Fill);
+        assert_eq!(ObjectFit::from_css("cover"), ObjectFit::Cover);
+        assert_eq!(ObjectFit::from_css("contain"), ObjectFit::Contain);
+        assert_eq!(ObjectFit::from_css("none"), ObjectFit::None);
+        assert_eq!(ObjectFit::from_css("scale-down"), ObjectFit::ScaleDown);
+    }
+
+    #[test]
+    fn test_object_position_parse() {
+        let pos = ObjectPosition::from_css("center");
+        assert_eq!(pos.horizontal, 0.5);
+        assert_eq!(pos.vertical, 0.5);
+
+        let pos = ObjectPosition::from_css("left top");
+        assert_eq!(pos.horizontal, 0.0);
+        assert_eq!(pos.vertical, 0.0);
+
+        let pos = ObjectPosition::from_css("100% 0%");
+        assert_eq!(pos.horizontal, 1.0);
+        assert_eq!(pos.vertical, 0.0);
+    }
+
+    #[test]
+    fn test_image_box_calculate_size() {
+        // Test 1: No specified dimensions - use intrinsic, scaled to fit
+        let mut img_box = ImageBox::new("test.png");
+        img_box.intrinsic_size = IntrinsicSize::new(400.0, 300.0);
+        
+        let (w, h) = img_box.calculate_concrete_size(200.0, None, 16.0);
+        assert_eq!(w, 200.0); // Scaled down to fit
+        assert_eq!(h, 150.0); // Preserved aspect ratio
+
+        // Test 2: Specified width (use a fresh ImageBox to avoid state issues)
+        // Note: Px(100.0) converts to 75.0 pt (at 96 DPI where 1px = 0.75pt)
+        let mut img_box2 = ImageBox::new("test2.png");
+        img_box2.intrinsic_size = IntrinsicSize::new(400.0, 300.0);
+        img_box2.specified_width = Some(Length::Px(100.0));
+        let (w, h) = img_box2.calculate_concrete_size(200.0, None, 16.0);
+        assert_eq!(w, 75.0); // 100px = 75pt
+        assert_eq!(h, 56.25); // Preserved aspect ratio (75 * 300/400 = 56.25)
+    }
+
+    #[test]
+    fn test_image_box_object_fit() {
+        let container = Rect::new(0.0, 0.0, 100.0, 100.0);
+        
+        // Test Fill - should fill container
+        let img_box = ImageBox::new("test.png")
+            .with_intrinsic_size(200.0, 100.0)
+            .with_object_fit(ObjectFit::Fill);
+        let draw_rect = img_box.calculate_draw_rect(container, 200.0, 100.0);
+        assert_eq!(draw_rect.width, 100.0);
+        assert_eq!(draw_rect.height, 100.0);
+
+        // Test Contain - should preserve aspect ratio
+        let img_box = ImageBox::new("test.png")
+            .with_intrinsic_size(200.0, 100.0)
+            .with_object_fit(ObjectFit::Contain);
+        let draw_rect = img_box.calculate_draw_rect(container, 200.0, 100.0);
+        assert_eq!(draw_rect.width, 100.0);
+        assert_eq!(draw_rect.height, 50.0); // Half height to preserve ratio
+    }
+}
+
+// Extension trait for ImageBox builder pattern
+impl ImageBox {
+    fn with_object_fit(mut self, fit: ObjectFit) -> Self {
+        self.object_fit = fit;
+        self
     }
 }

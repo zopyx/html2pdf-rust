@@ -5,11 +5,13 @@
 
 use crate::types::{Rect, Length};
 use crate::layout::box_model::{
-    LayoutBox, BoxType,
+    LayoutBox, BoxType, ImageBox,
     calculate_width, calculate_height,
 };
-use crate::layout::style::{ComputedStyle, Clear};
+use crate::layout::form::{calculate_form_dimensions};
+use crate::layout::style::{ComputedStyle, Clear, Display};
 use crate::layout::text::{TextLayout};
+use crate::layout::grid::layout_grid_container;
 
 /// Block formatting context
 /// 
@@ -142,6 +144,10 @@ pub struct InlineFragment {
     pub is_text: bool,
     /// Text content (if text)
     pub text: Option<String>,
+    /// Whether this is an image fragment
+    pub is_image: bool,
+    /// Image data reference (if image)
+    pub image_data: Option<ImageBox>,
 }
 
 impl InlineFormattingContext {
@@ -244,7 +250,17 @@ pub fn layout_block_children(
         // Layout the child based on its type
         match child.box_type {
             BoxType::Block | BoxType::Anonymous => {
-                layout_block_box(child, &mut child_bfc, style_resolver, base_font_size);
+                // Check if this is a grid container
+                if let Some(element) = child.element() {
+                    let style = style_resolver(element);
+                    if matches!(style.display, Display::Grid | Display::InlineGrid) {
+                        layout_grid_container(child, &mut child_bfc, style_resolver, base_font_size);
+                    } else {
+                        layout_block_box(child, &mut child_bfc, style_resolver, base_font_size);
+                    }
+                } else {
+                    layout_block_box(child, &mut child_bfc, style_resolver, base_font_size);
+                }
             }
             BoxType::Inline | BoxType::InlineBlock => {
                 // Inline content in block context - should have been wrapped in anonymous block
@@ -253,6 +269,22 @@ pub fn layout_block_children(
             BoxType::TextRun => {
                 // Text runs should be inside inline containers
                 layout_text_run(child, &mut child_bfc, style_resolver, base_font_size);
+            }
+            BoxType::Image => {
+                // Layout image as block-level
+                layout_image_box(child, &mut child_bfc, style_resolver, base_font_size);
+            }
+            BoxType::Form => {
+                // Layout form control as block-level
+                layout_form_box(child, &mut child_bfc, style_resolver, base_font_size);
+            }
+            BoxType::Grid => {
+                // Grid container
+                layout_grid_container(child, &mut child_bfc, style_resolver, base_font_size);
+            }
+            BoxType::Flex => {
+                // Flex containers should be handled separately
+                layout_block_box(child, &mut child_bfc, style_resolver, base_font_size);
             }
             _ => {}
         }
@@ -277,7 +309,7 @@ fn layout_block_box(
     base_font_size: f32,
 ) {
     // Get computed style for this element
-    let style = if let Some(element) = box_.element() {
+    let _style = if let Some(element) = box_.element() {
         style_resolver(element)
     } else {
         ComputedStyle::default()
@@ -336,6 +368,190 @@ fn layout_block_box(
     box_.is_laid_out = true;
 }
 
+/// Layout an image box
+fn layout_image_box(
+    box_: &mut LayoutBox,
+    bfc: &mut BlockFormattingContext,
+    style_resolver: &dyn Fn(&crate::html::Element) -> ComputedStyle,
+    base_font_size: f32,
+) {
+    // Get computed style for this element
+    let style = if let Some(element) = box_.element() {
+        style_resolver(element)
+    } else {
+        ComputedStyle::default()
+    };
+
+    let containing_block_width = bfc.available_width();
+
+    // Get image-specific CSS properties first (store them before mutable borrows)
+    let (obj_fit_attr, obj_pos_attr): (Option<String>, Option<String>) = if let Some(element) = box_.element() {
+        (element.attr("data-object-fit").map(|s| s.to_string()), element.attr("data-object-position").map(|s| s.to_string()))
+    } else {
+        (None, None)
+    };
+
+    // Calculate width (including margins, padding, border)
+    calculate_width(
+        box_,
+        containing_block_width,
+        Some(style.width),
+        (style.margin_left, style.margin_right),
+        (style.padding_left, style.padding_right, style.padding_top, style.padding_bottom),
+        (
+            Length::Px(style.border_left_width.to_pt(base_font_size)),
+            Length::Px(style.border_right_width.to_pt(base_font_size)),
+            Length::Px(style.border_top_width.to_pt(base_font_size)),
+            Length::Px(style.border_bottom_width.to_pt(base_font_size)),
+        ),
+        base_font_size,
+    );
+
+    // Calculate image content dimensions
+    let available_content_width = box_.dimensions.content.width;
+    
+    // Apply CSS object-fit/object-position and calculate size
+    let (_image_width, image_height) = if let Some(ref mut img_data) = box_.image_data {
+        // Apply CSS object-fit if specified
+        if let Some(ref obj_fit) = obj_fit_attr {
+            img_data.object_fit = crate::layout::box_model::ObjectFit::from_css(obj_fit);
+        }
+        if let Some(ref obj_pos) = obj_pos_attr {
+            img_data.object_position = crate::layout::box_model::ObjectPosition::from_css(obj_pos);
+        }
+        
+        // Calculate concrete size
+        let (w, h) = img_data.calculate_concrete_size(
+            available_content_width,
+            None, // No height constraint
+            base_font_size
+        );
+        
+        // Set the content dimensions
+        box_.dimensions.content.width = w;
+        box_.dimensions.content.height = h;
+        
+        (w, h)
+    } else {
+        // No image data - use placeholder size
+        let default_width = available_content_width.min(300.0);
+        let default_height = 150.0f32;
+        box_.dimensions.content.width = default_width;
+        box_.dimensions.content.height = default_height;
+        (default_width, default_height)
+    };
+
+    // Calculate height including padding and border
+    calculate_height(
+        box_,
+        f32::MAX,
+        Some(style.height),
+        (style.margin_top, style.margin_bottom),
+        (
+            Length::Px(style.padding_top.to_pt(base_font_size)),
+            Length::Px(style.padding_bottom.to_pt(base_font_size)),
+            Length::Px(0.0),
+            Length::Px(0.0),
+        ),
+        (
+            Length::Px(style.border_top_width.to_pt(base_font_size)),
+            Length::Px(style.border_bottom_width.to_pt(base_font_size)),
+            Length::Px(0.0),
+            Length::Px(0.0),
+        ),
+        base_font_size,
+        Some(image_height),
+    );
+
+    // Position horizontally
+    let margin_left = box_.dimensions.margin.left;
+    box_.dimensions.content.x = bfc.containing_block.x + margin_left + box_.dimensions.border.left + box_.dimensions.padding.left;
+    box_.dimensions.content.y = bfc.current_y;
+
+    box_.is_laid_out = true;
+}
+
+/// Layout a form control box
+fn layout_form_box(
+    box_: &mut LayoutBox,
+    bfc: &mut BlockFormattingContext,
+    style_resolver: &dyn Fn(&crate::html::Element) -> ComputedStyle,
+    base_font_size: f32,
+) {
+    let style = if let Some(element) = box_.element() {
+        style_resolver(element)
+    } else {
+        ComputedStyle::default()
+    };
+
+    // Get form data
+    let Some(form_data) = box_.form_data() else {
+        box_.is_laid_out = true;
+        return;
+    };
+
+    let containing_block_width = bfc.available_width();
+
+    // Calculate dimensions using form-specific logic
+    let dims = calculate_form_dimensions(form_data, &style, containing_block_width, base_font_size);
+    box_.dimensions = dims;
+
+    // Position horizontally
+    let margin_left = box_.dimensions.margin.left;
+    box_.dimensions.content.x = bfc.containing_block.x + margin_left + box_.dimensions.border.left + box_.dimensions.padding.left;
+    box_.dimensions.content.y = bfc.current_y;
+
+    box_.is_laid_out = true;
+}
+
+/// Layout inline form box
+fn layout_inline_form(
+    box_: &mut LayoutBox,
+    ifc: &mut InlineFormattingContext,
+    style_resolver: &dyn Fn(&crate::html::Element) -> ComputedStyle,
+    base_font_size: f32,
+) {
+    let style = if let Some(element) = box_.element() {
+        style_resolver(element)
+    } else {
+        ComputedStyle::default()
+    };
+
+    // Get form data
+    let Some(form_data) = box_.form_data() else {
+        box_.is_laid_out = true;
+        return;
+    };
+
+    // Calculate dimensions
+    let dims = calculate_form_dimensions(form_data, &style, ifc.available_width, base_font_size);
+    box_.dimensions = dims;
+
+    // Create fragment
+    let fragment_width = box_.dimensions.border_box_width();
+    let fragment_height = box_.dimensions.border_box_height();
+
+    let mut fragment = InlineFragment {
+        box_index: 0,
+        width: fragment_width,
+        height: fragment_height,
+        x: ifc.current_x,
+        is_text: false,
+        text: None,
+        is_image: false,
+        image_data: None,
+    };
+
+    // Check if it fits
+    if !ifc.has_room_for(fragment.width) && !ifc.current_line.fragments.is_empty() {
+        ifc.finish_line();
+        fragment.x = 0.0;
+    }
+
+    ifc.add_fragment(fragment);
+    box_.is_laid_out = true;
+}
+
 /// Layout inline children
 pub fn layout_inline_children(
     box_: &mut LayoutBox,
@@ -371,6 +587,12 @@ pub fn layout_inline_children(
             BoxType::InlineBlock => {
                 layout_inline_block_box(child, &mut ifc, style_resolver, base_font_size);
             }
+            BoxType::Image => {
+                layout_inline_image(child, &mut ifc, style_resolver, base_font_size);
+            }
+            BoxType::Form => {
+                layout_inline_form(child, &mut ifc, style_resolver, base_font_size);
+            }
             _ => {}
         }
     }
@@ -387,6 +609,56 @@ pub fn layout_inline_children(
 
     // Store line boxes for rendering
     // (In a full implementation, these would be attached to the box)
+    box_.is_laid_out = true;
+}
+
+/// Layout an inline image
+fn layout_inline_image(
+    box_: &mut LayoutBox,
+    ifc: &mut InlineFormattingContext,
+    style_resolver: &dyn Fn(&crate::html::Element) -> ComputedStyle,
+    base_font_size: f32,
+) {
+    let style = if let Some(element) = box_.element() {
+        style_resolver(element)
+    } else {
+        ComputedStyle::default()
+    };
+
+    // Calculate image dimensions
+    let (image_width, image_height) = if let Some(ref mut img_data) = box_.image_data {
+        img_data.calculate_concrete_size(
+            ifc.available_width,
+            None,
+            base_font_size
+        )
+    } else {
+        (100.0, 100.0) // Default placeholder
+    };
+
+    // Create a fragment for the image
+    let mut fragment = InlineFragment {
+        box_index: 0,
+        width: image_width,
+        height: image_height,
+        x: ifc.current_x,
+        is_text: false,
+        text: None,
+        is_image: true,
+        image_data: box_.image_data.clone(),
+    };
+
+    // Check if it fits on current line
+    if !ifc.has_room_for(fragment.width) && !ifc.current_line.fragments.is_empty() {
+        ifc.finish_line();
+        fragment.x = 0.0;
+    }
+
+    ifc.add_fragment(fragment);
+
+    // Update box dimensions
+    box_.dimensions.content.width = image_width;
+    box_.dimensions.content.height = image_height;
     box_.is_laid_out = true;
 }
 
@@ -423,6 +695,8 @@ fn layout_inline_text(
             x: ifc.current_x,
             is_text: true,
             text: Some(line.fragments.iter().map(|f| f.text.clone()).collect::<String>()),
+            is_image: false,
+            image_data: None,
         };
 
         ifc.add_fragment(fragment);
@@ -465,6 +739,8 @@ fn layout_inline_box(
                     x: ifc.current_x + inline_width - width,
                     is_text: true,
                     text: child.text_content.clone(),
+                    is_image: false,
+                    image_data: None,
                 };
                 ifc.add_fragment(fragment);
             }
@@ -473,6 +749,12 @@ fn layout_inline_box(
                 let mut child_ifc = InlineFormattingContext::new(ifc.available_width, ifc.line_height);
                 layout_inline_box(child, &mut child_ifc, style_resolver, base_font_size);
                 inline_height = inline_height.max(child_ifc.total_height());
+            }
+            BoxType::Image => {
+                layout_inline_image(child, ifc, style_resolver, base_font_size);
+            }
+            BoxType::Form => {
+                layout_inline_form(child, ifc, style_resolver, base_font_size);
             }
             _ => {}
         }
@@ -510,6 +792,8 @@ fn layout_inline_block_box(
         x: ifc.current_x,
         is_text: false,
         text: None,
+        is_image: false,
+        image_data: None,
     };
 
     // Check if it fits
@@ -607,12 +891,31 @@ mod tests {
             x: 0.0,
             is_text: true,
             text: Some("Hello".to_string()),
+            is_image: false,
+            image_data: None,
         };
 
         ifc.add_fragment(fragment);
         assert_eq!(ifc.current_x, 50.0);
         assert!(ifc.has_room_for(100.0));
         assert!(!ifc.has_room_for(200.0));
+    }
+
+    #[test]
+    fn test_image_fragment() {
+        let fragment = InlineFragment {
+            box_index: 0,
+            width: 100.0,
+            height: 80.0,
+            x: 0.0,
+            is_text: false,
+            text: None,
+            is_image: true,
+            image_data: Some(ImageBox::new("test.png")),
+        };
+
+        assert!(fragment.is_image);
+        assert!(fragment.image_data.is_some());
     }
 
     #[test]

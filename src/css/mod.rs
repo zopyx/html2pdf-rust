@@ -4,22 +4,70 @@
 
 mod tokenizer;
 pub mod parser;
-mod values;
+pub mod values;
 mod selectors;
-mod at_rules;
+pub mod at_rules;
 
 pub use tokenizer::{CssTokenizer, CssToken};
 pub use parser::{CssParser, Stylesheet, Rule, StyleRule, Declaration, ImportRule};
-pub use values::{CssValue, CssFunction, Unit};
+pub use values::{CssValue, CssFunction, CssKeyword, CssVariableResolver, Unit, ColorValue};
 pub use selectors::{Selector, SelectorPart, Combinator, AttributeOp};
 pub use at_rules::{AtRule, PageRule, PageMarginBox, PageSelector, MarginBoxType};
 
 use crate::types::Result;
+use crate::error::{ErrorCollector, errors};
 
-/// Parse CSS stylesheet from string
+/// Parse CSS stylesheet from string with enhanced error handling
+///
+/// # Arguments
+///
+/// * `input` - The CSS string to parse
+///
+/// # Returns
+///
+/// Returns `Ok(Stylesheet)` on success, or an error if parsing fails.
+///
+/// # Example
+///
+/// ```
+/// use html2pdf::css::parse_stylesheet;
+///
+/// let css = r#"body { color: black; }"#;
+/// let stylesheet = parse_stylesheet(css).unwrap();
+/// ```
 pub fn parse_stylesheet(input: &str) -> Result<Stylesheet> {
     let mut parser = CssParser::new(input);
-    parser.parse()
+    let mut error_collector = ErrorCollector::new();
+    
+    match parser.parse() {
+        Ok(stylesheet) => {
+            // Check for warnings
+            if error_collector.has_warnings() {
+                error_collector.print_warnings();
+            }
+            Ok(stylesheet)
+        }
+        Err(e) => {
+            // Try to provide more context
+            Err(errors::css_parse(format!("Failed to parse stylesheet: {}", e)))
+        }
+    }
+}
+
+/// Parse CSS stylesheet with error collection
+///
+/// Returns both the stylesheet (if successful) and any errors/warnings.
+pub fn parse_stylesheet_with_errors(input: &str) -> (Result<Stylesheet>, ErrorCollector) {
+    let mut parser = CssParser::new(input);
+    let mut error_collector = ErrorCollector::new();
+    
+    match parser.parse() {
+        Ok(stylesheet) => (Ok(stylesheet), error_collector),
+        Err(e) => {
+            error_collector.add_error(errors::css_parse(format!("Parse error: {}", e)));
+            (Err(error_collector.to_error().unwrap()), error_collector)
+        }
+    }
 }
 
 /// Parse a single CSS rule

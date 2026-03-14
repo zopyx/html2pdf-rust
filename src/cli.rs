@@ -13,6 +13,8 @@ use crate::{
     html_to_pdf_from_input, Config, Input, Margins, Orientation, PaperSize,
     Result as PdfResult,
 };
+use crate::cache::{CacheConfig, CacheManager};
+use crate::progress::{ProgressCallback, ProgressStage, ProgressTracker};
 
 /// HTML to PDF converter with W3C PrintCSS support
 #[derive(Parser, Debug)]
@@ -162,6 +164,35 @@ pub struct Cli {
     #[arg(long, help = "Show layout debugging information")]
     pub debug_layout: bool,
 
+    /// Cache directory path
+    #[arg(
+        long,
+        value_name = "DIR",
+        help = "Cache directory for downloaded resources"
+    )]
+    pub cache_dir: Option<std::path::PathBuf>,
+
+    /// Disable caching
+    #[arg(long, help = "Disable all caching")]
+    pub no_cache: bool,
+
+    /// Cache TTL in seconds
+    #[arg(
+        long,
+        value_name = "SECONDS",
+        help = "Cache TTL in seconds for HTTP resources",
+        default_value = "3600"
+    )]
+    pub cache_ttl: u64,
+
+    /// Clear cache and exit
+    #[arg(long, help = "Clear the cache and exit")]
+    pub clear_cache: bool,
+
+    /// Print cache statistics
+    #[arg(long, help = "Print cache statistics after conversion")]
+    pub cache_stats: bool,
+
     /// Print version and exit
     #[arg(short = 'V', long, help = "Print version information")]
     pub version: bool,
@@ -277,7 +308,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 return Ok(());
             }
             Commands::Validate { input } => {
-                return validate_input(&input);
+                return validate_input(&input).map_err(|e| Box::new(e) as Box<dyn std::error::Error>);
             }
             Commands::Config => {
                 print_default_config();
@@ -286,27 +317,84 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Handle --clear-cache
+    if cli.clear_cache {
+        let cache_config = CacheConfig::default();
+        if let Some(cache_dir) = &cli.cache_dir {
+            let cache_config = cache_config.with_cache_dir(cache_dir.clone());
+            let cache = CacheManager::with_config(&cache_config);
+            match cache.clear_all() {
+                Ok(_) => {
+                    println!("Cache cleared successfully: {}", cache.cache_dir().display());
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("Failed to clear cache: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            let cache = CacheManager::with_config(&cache_config);
+            match cache.clear_all() {
+                Ok(_) => {
+                    println!("Cache cleared successfully: {}", cache.cache_dir().display());
+                    return Ok(());
+                }
+                Err(e) => {
+                    eprintln!("Failed to clear cache: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+
     // Setup logging
     setup_logging(cli.verbose);
 
     // Get input source
-    let input = get_input(&cli)?;
+    let input = get_input(&cli).map_err(|e| {
+        let err = errors::io(format!("Failed to read input: {}", e));
+        Box::new(err) as Box<dyn std::error::Error>
+    })?;
     info!("Input source: {}", input.description());
 
     // Build configuration
-    let config = build_config(&cli)?;
+    let config = build_config(&cli).map_err(|e| {
+        let err = errors::validation(format!("Invalid configuration: {}", e));
+        Box::new(err) as Box<dyn std::error::Error>
+    })?;
     debug!("Configuration: {:?}", config);
 
     // Perform conversion with progress indication
     info!("Converting HTML to PDF...");
-    let pdf_bytes = if atty::is(atty::Stream::Stderr) && cli.verbose {
-        convert_with_progress(&input, &config)?
+    let pdf_bytes = if is_stderr_tty() && cli.verbose {
+        convert_with_progress(&input, &config).map_err(|e| {
+            Box::new(e) as Box<dyn std::error::Error>
+        })?
     } else {
-        html_to_pdf_from_input(&input, &config)?
+        html_to_pdf_from_input(&input, &config).map_err(|e| {
+            Box::new(e) as Box<dyn std::error::Error>
+        })?
     };
 
     // Write output
-    write_output(&cli, pdf_bytes)?;
+    write_output(&cli, pdf_bytes).map_err(|e| {
+        let err = errors::io(format!("Failed to write output: {}", e));
+        Box::new(err) as Box<dyn std::error::Error>
+    })?;
+
+    // Print cache statistics if requested
+    if cli.cache_stats {
+        let cache = CacheManager::with_config(&config.cache_config);
+        let stats = cache.stats();
+        eprintln!("\nCache Statistics:");
+        eprintln!("  Entries: {}", stats.entries);
+        eprintln!("  Total Size: {} bytes", stats.total_size);
+        eprintln!("  Hits: {}", stats.hits);
+        eprintln!("  Misses: {}", stats.misses);
+        eprintln!("  Hit Rate: {:.1}%", stats.hit_rate() * 100.0);
+        eprintln!("  Evictions: {}", stats.evictions);
+    }
 
     info!("Conversion complete!");
     Ok(())
@@ -337,6 +425,11 @@ fn print_help() {
     println!("        --timeout <SECONDS>      Network timeout [default: 30]");
     println!("    -v, --verbose                Enable verbose output");
     println!("        --debug-layout           Show layout debugging");
+    println!("        --cache-dir <DIR>        Cache directory for resources");
+    println!("        --no-cache               Disable all caching");
+    println!("        --cache-ttl <SECONDS>    Cache TTL for HTTP resources [default: 3600]");
+    println!("        --clear-cache            Clear cache and exit");
+    println!("        --cache-stats            Print cache statistics");
     println!("    -V, --version                Print version");
     println!("    -h, --help                   Print help\n");
     println!("EXAMPLES:");
@@ -462,6 +555,17 @@ fn build_config(cli: &Cli) -> Result<Config, Box<dyn std::error::Error>> {
     // Set debug layout
     config.debug_layout = cli.debug_layout;
 
+    // Apply cache configuration
+    if cli.no_cache {
+        config.cache_config = config.cache_config.disable_cache();
+    }
+
+    if let Some(cache_dir) = &cli.cache_dir {
+        config.cache_config = config.cache_config.with_cache_dir(cache_dir.clone());
+    }
+
+    config.cache_config = config.cache_config.with_http_ttl(std::time::Duration::from_secs(cli.cache_ttl));
+
     Ok(config)
 }
 
@@ -517,12 +621,104 @@ fn parse_length(s: &str) -> Result<f32, Box<dyn std::error::Error>> {
     }
 }
 
-/// Convert with progress indication
+/// CLI progress callback implementation
+#[cfg(feature = "progress")]
+struct CliProgressCallback {
+    progress_bar: indicatif::ProgressBar,
+    current_stage: std::sync::Mutex<ProgressStage>,
+}
+
+#[cfg(feature = "progress")]
+impl CliProgressCallback {
+    fn new() -> Self {
+        let pb = indicatif::ProgressBar::new(100);
+        pb.set_style(
+            indicatif::ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {msg}")
+                .unwrap()
+                .progress_chars("#>-"),
+        );
+        
+        Self {
+            progress_bar: pb,
+            current_stage: std::sync::Mutex::new(ProgressStage::Loading),
+        }
+    }
+    
+    fn finish(&self) {
+        self.progress_bar.finish_with_message("Done");
+    }
+}
+
+#[cfg(feature = "progress")]
+impl ProgressCallback for CliProgressCallback {
+    fn on_progress(&self, stage: ProgressStage, percent: f32, message: &str) -> bool {
+        let mut current = self.current_stage.lock().unwrap();
+        
+        // Calculate overall progress based on stage weights
+        let stages = ProgressStage::all_stages();
+        let stage_index = stages.iter().position(|s| *s == stage).unwrap_or(0);
+        let completed_weight: f32 = stages[..stage_index].iter().map(|s| s.weight()).sum();
+        let current_weight = stage.weight() * (percent / 100.0);
+        let overall_percent = ((completed_weight + current_weight) * 100.0) as u64;
+        
+        *current = stage;
+        drop(current);
+        
+        self.progress_bar.set_position(overall_percent.min(100));
+        self.progress_bar.set_message(format!("{}: {}", stage.code(), message));
+        
+        true
+    }
+    
+    fn on_warning(&self, message: &str) {
+        self.progress_bar.println(format!("⚠️  Warning: {}", message));
+    }
+    
+    fn on_error(&self, error: &str) {
+        self.progress_bar.println(format!("❌ Error: {}", error));
+    }
+}
+
+/// Simple text-based progress callback for non-feature builds
+struct TextProgressCallback;
+
+impl ProgressCallback for TextProgressCallback {
+    fn on_progress(&self, stage: ProgressStage, percent: f32, message: &str) -> bool {
+        eprintln!("[{}] {:.0}%: {}", stage.code(), percent, message);
+        true
+    }
+    
+    fn on_warning(&self, message: &str) {
+        eprintln!("⚠️  Warning: {}", message);
+    }
+    
+    fn on_error(&self, error: &str) {
+        eprintln!("❌ Error: {}", error);
+    }
+}
+
+/// Convert with progress indication and detailed error handling
 fn convert_with_progress(input: &Input, config: &Config) -> PdfResult<Vec<u8>> {
+    // Create progress tracker
+    #[cfg(feature = "progress")]
+    let callback = CliProgressCallback::new();
+    #[cfg(not(feature = "progress"))]
+    let callback = TextProgressCallback;
+    
+    let tracker = ProgressTracker::new(callback);
+    
+    // Build config with progress tracker
+    let mut config_with_progress = config.clone();
+    config_with_progress.progress = Some(std::sync::Arc::new(tracker.clone()));
+
     eprint!("[1/4] Loading HTML... ");
     let html_content = input.load().map_err(|e| {
         eprintln!("FAILED");
-        e
+        crate::types::PdfError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Failed to load input: {}", e)
+        ))
     })?;
     eprintln!("OK ({} bytes)", html_content.len());
 
@@ -534,15 +730,39 @@ fn convert_with_progress(input: &Input, config: &Config) -> PdfResult<Vec<u8>> {
     eprintln!("OK");
 
     eprint!("[3/4] Processing styles... ");
-    // Styles processing
+    // Pre-parse stylesheets to catch errors early
+    for css in &config.user_stylesheets {
+        if let Err(_e) = crate::css::parse_stylesheet(css) {
+            tracker.warning("Failed to parse user stylesheet");
+        }
+    }
     eprintln!("OK");
 
     eprint!("[4/4] Generating PDF... ");
-    let result = html_to_pdf_from_input(input, config).map_err(|e| {
+    let result = html_to_pdf_from_input(input, &config_with_progress).map_err(|e| {
         eprintln!("FAILED");
         e
     })?;
     eprintln!("OK ({} bytes)", result.len());
+
+    #[cfg(feature = "progress")]
+    {
+        use crate::progress::ProgressCallback;
+        callback.finish();
+    }
+
+    // Get and display final statistics
+    let stats = tracker.stats();
+    if stats.elements_processed > 0 {
+        eprintln!("\n📊 Statistics:");
+        eprintln!("   Elements: {}", stats.elements_processed);
+        eprintln!("   CSS rules: {}", stats.css_rules_parsed);
+        eprintln!("   Pages: {}", stats.pages_generated);
+        eprintln!("   Total time: {}", stats.format_total_time());
+        if stats.output_bytes > 0 {
+            eprintln!("   Output size: {}", crate::progress::format_bytes(stats.output_bytes));
+        }
+    }
 
     Ok(result)
 }
@@ -591,7 +811,13 @@ fn write_output(cli: &Cli, pdf_bytes: Vec<u8>) -> Result<(), Box<dyn std::error:
 
 /// Validate HTML/CSS input
 fn validate_input(input: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::progress::{ProgressTracker, ProgressStage};
+    
     println!("Validating: {}", input);
+    
+    // Create progress tracker for verbose validation
+    let tracker = ProgressTracker::new(crate::progress::NoOpProgressCallback);
+    tracker.begin_stage(ProgressStage::Loading);
 
     // Load and parse HTML
     let html = if input.starts_with("http://") || input.starts_with("https://") {
@@ -601,38 +827,34 @@ fn validate_input(input: &str) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         input.to_string()
     };
+    
+    tracker.end_current_stage();
+    tracker.begin_stage(ProgressStage::ParsingHtml);
 
     match crate::html::parse_html(&html) {
         Ok(doc) => {
             println!("  [✓] HTML parsing successful");
             println!("      Document title: {:?}", &doc.title);
+            println!("      Elements: {}", doc.element_count());
         }
         Err(e) => {
             println!("  [✗] HTML parsing failed: {}", e);
             return Err("Validation failed".into());
         }
     }
-
+    
+    tracker.end_current_stage();
+    
     // Try to extract and parse CSS
     println!("  [✓] Validation complete");
     Ok(())
 }
 
-/// Helper module for checking if stdin/stdout is a TTY
-mod atty {
-    #[derive(Clone, Copy)]
-    #[allow(dead_code)]
-    pub enum Stream {
-        Stdin,
-        Stdout,
-        Stderr,
-    }
-
-    pub fn is(stream: Stream) -> bool {
-        // Simplified implementation
-        // In production, use the atty crate
-        matches!(stream, Stream::Stderr)
-    }
+/// Helper function for checking if stderr is a TTY
+fn is_stderr_tty() -> bool {
+    // Simplified implementation
+    // In production, use the atty crate
+    true
 }
 
 #[cfg(test)]

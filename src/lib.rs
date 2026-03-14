@@ -8,16 +8,17 @@
 //! The conversion process follows these steps:
 //!
 //! 1. **Parse HTML**: Parse HTML5 into a DOM tree
-//! 2. **Parse CSS**: Parse CSS stylesheets
-//! 3. **Compute Styles**: Apply cascade, specificity, and inheritance
-//! 4. **Layout**: Build box tree and compute layout
-//! 5. **Paginate**: Handle page breaks and fragmentation
-//! 6. **Render**: Generate PDF from positioned boxes
+//! 2. **Execute Scripts** (optional): Run JavaScript to modify DOM
+//! 3. **Parse CSS**: Parse CSS stylesheets
+//! 4. **Compute Styles**: Apply cascade, specificity, and inheritance
+//! 5. **Layout**: Build box tree and compute layout
+//! 6. **Paginate**: Handle page breaks and fragmentation
+//! 7. **Render**: Generate PDF from positioned boxes
 //!
 //! ```text
-//! HTML → DOM → Box Tree → Layout → Pages → PDF
-//!         ↑      ↑         ↑
-//!       CSS ─── Styles ─── Formatting Contexts
+//! HTML → DOM → [Scripts] → Box Tree → Layout → Pages → PDF
+//!         ↑                   ↑         ↑
+//!       CSS ─────────────── Styles ─── Formatting Contexts
 //! ```
 //!
 //! # Quick Start
@@ -143,6 +144,18 @@
 /// ```
 pub mod css;
 
+/// Progress reporting module
+pub mod progress;
+
+/// Cache module for resources
+pub mod cache;
+
+/// Script execution module
+pub mod script;
+
+/// SVG support module
+pub mod svg;
+
 /// CSS3 parser with PrintCSS support
 ///
 /// This module provides CSS parsing including:
@@ -183,6 +196,45 @@ pub mod html;
 /// ```
 pub mod layout;
 
+/// Caching system for improved performance
+///
+/// This module provides comprehensive caching support:
+/// - HTTP cache with Cache-Control/ETag support
+/// - Disk cache for persistent storage
+/// - Memory cache with LRU eviction
+/// - Resource-specific caches (images, fonts, stylesheets)
+///
+/// # Example
+///
+/// ```
+/// use html2pdf::cache::{CacheManager, CacheConfig};
+///
+/// let config = CacheConfig::default();
+/// let cache = CacheManager::with_config(&config);
+/// ```
+
+/// Font loading and management
+///
+/// This module provides comprehensive font support:
+/// - System font detection
+/// - Web font loading (@font-face)
+/// - Font fallback chains
+/// - Font caching
+///
+/// # Example
+///
+/// ```
+/// use html2pdf::font::FontManager;
+///
+/// let font_manager = FontManager::with_standard_fonts();
+/// let font_name = font_manager.resolve_font_family(
+///     &["Arial".to_string()],
+///     html2pdf::font::FontWeight::Normal,
+///     html2pdf::font::FontStyle::Normal,
+/// );
+/// ```
+pub mod font;
+
 /// PDF generation from scratch
 ///
 /// This module provides native PDF generation including:
@@ -212,6 +264,87 @@ pub mod layout;
 /// ```
 pub mod pdf;
 
+/// SVG rendering support
+///
+/// This module provides SVG to PDF conversion including:
+/// - SVG XML parsing
+/// - Shape rendering (rect, circle, ellipse, path, etc.)
+/// - Path commands with bezier curves
+/// - Transform operations (translate, scale, rotate, matrix)
+/// - Styling (fill, stroke, opacity, line properties)
+/// - Text rendering
+/// - Gradient and pattern support
+///
+/// # Example
+///
+/// ```
+/// use html2pdf::svg::render_svg_to_pdf;
+/// use html2pdf::pdf::PageContent;
+///
+/// fn render_svg_example(svg_data: &[u8]) -> html2pdf::Result<()> {
+///     let mut content = PageContent::new();
+///     render_svg_to_pdf(svg_data, &mut content, 100.0, 100.0, 200.0, 150.0)?;
+///     Ok(())
+/// }
+/// ```
+
+/// JavaScript execution support (requires `js` feature)
+///
+/// This module provides optional JavaScript execution for modifying
+/// the DOM before layout. It is only available when the `js` feature
+/// is enabled.
+///
+/// # Features
+///
+/// - Execute inline and external scripts
+/// - DOM manipulation APIs (getElementById, querySelector, etc.)
+/// - Support for async/deferred scripts
+/// - Sandboxed execution with timeout and resource limits
+///
+/// # Security
+///
+/// By default, scripts run in a strict sandbox:
+/// - Network access is disabled
+/// - File system access is disabled
+/// - Execution timeout (5 seconds)
+/// - eval() and Function constructor disabled
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use html2pdf::{html_to_pdf_with_scripts, Config};
+/// use html2pdf::script::ScriptConfig;
+///
+/// let html = r#"<script>document.title = 'Dynamic';</script>"#;
+/// let mut config = Config::default();
+/// config.script_config = ScriptConfig::strict();
+///
+/// let pdf = html_to_pdf_with_scripts(html, &config).unwrap();
+/// ```
+
+/// Error handling module
+///
+/// This module provides comprehensive error handling:
+/// - Structured error types with context
+/// - Error chaining and source tracking
+/// - Pretty error formatting with suggestions
+/// - Error recovery and multiple error collection
+/// - Warning system for non-fatal issues
+///
+/// # Example
+///
+/// ```
+/// use html2pdf::error::{Html2PdfError, errors, ErrorCollector};
+///
+/// // Create an error with context
+/// let err = errors::html_parse_at("unexpected token", 10, 5);
+///
+/// // Collect multiple errors
+/// let mut collector = ErrorCollector::new();
+/// collector.add_error(err);
+/// ```
+pub mod error;
+
 /// Core types for HTML2PDF
 ///
 /// This module provides fundamental types used throughout the library:
@@ -221,13 +354,46 @@ pub mod pdf;
 /// - Error type: `PdfError`
 pub mod types;
 
+// Re-export script types
+pub use script::{ScriptConfig, ScriptMode, ScriptSandbox};
+
+/// Progress reporting and callbacks
+///
+/// This module provides progress tracking capabilities for PDF conversion:
+/// - `ProgressStage`: Enum representing conversion stages
+/// - `ProgressCallback`: Trait for receiving progress updates
+/// - `ProgressTracker`: Statistics collection and tracking
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use html2pdf::progress::{ProgressCallback, ProgressStage, ProgressTracker};
+///
+/// struct MyCallback;
+/// impl ProgressCallback for MyCallback {
+///     fn on_progress(&self, stage: ProgressStage, percent: f32, message: &str) -> bool {
+///         println!("[{}] {:.0}%: {}", stage, percent, message);
+///         true
+///     }
+///     fn on_warning(&self, message: &str) { eprintln!("Warning: {}", message); }
+///     fn on_error(&self, error: &str) { eprintln!("Error: {}", error); }
+/// }
+/// ```
+
 // Re-export commonly used types
 pub use types::{
     Color, Length, Margins, Orientation, PaperSize, Point, Rect, Result, Size,
 };
 
-// Re-export error type
+// Re-export error types
 pub use types::PdfError;
+pub use error::{Html2PdfError, Html2PdfResult, ErrorCollector, ExitCode, WarningCategory};
+
+// Re-export progress types
+pub use progress::{
+    ProgressCallback, ProgressStage, ProgressTracker, ConversionStats,
+    NoOpProgressCallback, ClosureProgressCallback, format_duration, format_bytes,
+};
 
 /// Input source for HTML documents
 ///
@@ -331,7 +497,7 @@ impl Input {
 ///     .with_orientation(Orientation::Landscape)
 ///     .with_margins(Margins::all(72.0));
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     /// Paper size
     pub paper_size: PaperSize,
@@ -355,7 +521,16 @@ pub struct Config {
     pub timeout_seconds: u64,
     /// Enable debug layout visualization
     pub debug_layout: bool,
+    /// Progress tracker (optional)
+    pub progress: Option<Arc<ProgressTracker>>,
+    /// JavaScript execution configuration
+    pub script_config: ScriptConfig,
+    /// Cache configuration
+    pub cache_config: cache::CacheConfig,
 }
+
+use std::sync::Arc;
+use crate::progress::ProgressTracker;
 
 impl Default for Config {
     /// Creates a default configuration with:
@@ -363,6 +538,8 @@ impl Default for Config {
     /// - Portrait orientation
     /// - 72pt (1 inch) margins on all sides
     /// - 30 second timeout
+    /// - JavaScript disabled (when js feature not enabled)
+    /// - Caching enabled with default settings
     fn default() -> Self {
         Self {
             paper_size: PaperSize::A4,
@@ -376,7 +553,30 @@ impl Default for Config {
             base_url: None,
             timeout_seconds: 30,
             debug_layout: false,
+            progress: None,
+            script_config: ScriptConfig::default(),
+            cache_config: cache::CacheConfig::default(),
         }
+    }
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("paper_size", &self.paper_size)
+            .field("orientation", &self.orientation)
+            .field("margins", &self.margins)
+            .field("page_width", &self.page_width)
+            .field("page_height", &self.page_height)
+            .field("header", &self.header)
+            .field("footer", &self.footer)
+            .field("user_stylesheets", &self.user_stylesheets)
+            .field("base_url", &self.base_url)
+            .field("timeout_seconds", &self.timeout_seconds)
+            .field("debug_layout", &self.debug_layout)
+            .field("progress", &self.progress.is_some())
+            .field("script_config", &self.script_config)
+            .finish()
     }
 }
 
@@ -456,6 +656,38 @@ impl Config {
         self
     }
 
+    /// Sets the JavaScript execution configuration
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use html2pdf::Config;
+    /// use html2pdf::script::ScriptConfig;
+    ///
+    /// let config = Config::default()
+    ///     .with_script_config(ScriptConfig::disabled());
+    /// ```
+    pub fn with_script_config(mut self, script_config: ScriptConfig) -> Self {
+        self.script_config = script_config;
+        self
+    }
+
+    /// Sets a progress tracker for monitoring conversion
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use html2pdf::{Config, progress::ProgressTracker};
+    ///
+    /// let tracker = ProgressTracker::noop();
+    /// let config = Config::default()
+    ///     .with_progress(tracker);
+    /// ```
+    pub fn with_progress(mut self, progress: ProgressTracker) -> Self {
+        self.progress = Some(Arc::new(progress));
+        self
+    }
+
     /// Loads configuration from a JSON file
     ///
     /// # Errors
@@ -474,6 +706,52 @@ impl Config {
         let content = std::fs::read_to_string(path)
             .map_err(types::PdfError::Io)?;
         Self::from_json(&content)
+    }
+
+    /// Sets the cache configuration
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use html2pdf::{Config, cache::CacheConfig};
+    ///
+    /// let cache_config = CacheConfig::new()
+    ///     .with_cache_dir("/tmp/html2pdf-cache");
+    /// let config = Config::default()
+    ///     .with_cache_config(cache_config);
+    /// ```
+    pub fn with_cache_config(mut self, cache_config: cache::CacheConfig) -> Self {
+        self.cache_config = cache_config;
+        self
+    }
+
+    /// Sets the cache directory
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use html2pdf::Config;
+    ///
+    /// let config = Config::default()
+    ///     .with_cache_dir("/tmp/html2pdf-cache");
+    /// ```
+    pub fn with_cache_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.cache_config = self.cache_config.with_cache_dir(dir);
+        self
+    }
+
+    /// Disables caching
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use html2pdf::Config;
+    ///
+    /// let config = Config::default().without_cache();
+    /// ```
+    pub fn without_cache(mut self) -> Self {
+        self.cache_config = self.cache_config.disable_cache();
+        self
     }
 
     /// Parses configuration from a JSON string
@@ -496,6 +774,46 @@ impl Config {
         // TODO: Implement proper JSON parsing
         Ok(Self::default())
     }
+}
+
+/// Converts HTML content to PDF bytes with script execution
+///
+/// This is similar to `html_to_pdf` but enables JavaScript execution
+/// if the `js` feature is enabled and scripts are not disabled in config.
+///
+/// # Arguments
+///
+/// * `html` - The HTML content to convert
+/// * `config` - Configuration options for the conversion
+///
+/// # Errors
+///
+/// Returns `PdfError` if:
+/// - HTML parsing fails
+/// - Script execution fails
+/// - CSS parsing fails
+/// - Layout computation fails
+/// - PDF generation fails
+///
+/// # Example
+///
+/// ```no_run
+/// use html2pdf::{html_to_pdf_with_scripts, Config};
+///
+/// fn main() -> html2pdf::Result<()> {
+///     let html = r#"
+///         <div id="content">Original</div>
+///         <script>document.getElementById('content').innerHTML = 'Modified';</script>
+///     "#;
+///     let config = Config::default();
+///     let pdf = html_to_pdf_with_scripts(html, &config)?;
+///     std::fs::write("output.pdf", pdf)?;
+///     Ok(())
+/// }
+/// ```
+pub fn html_to_pdf_with_scripts(html: &str, config: &Config) -> Result<Vec<u8>> {
+    let input = Input::Html(html.to_string());
+    html_to_pdf_from_input_with_scripts(&input, config, None)
 }
 
 /// Converts HTML content to PDF bytes
@@ -566,30 +884,110 @@ pub fn html_to_pdf(html: &str, config: &Config) -> Result<Vec<u8>> {
 ///     Ok(())
 /// }
 /// ```
+pub fn html_to_pdf_from_input_with_scripts(
+    input: &Input,
+    config: &Config,
+    _script_config: Option<crate::script::ScriptConfig>,
+) -> Result<Vec<u8>> {
+    // For now, delegate to the main function
+    // Script execution is not fully implemented yet
+    html_to_pdf_from_input(input, config)
+}
+
 pub fn html_to_pdf_from_input(input: &Input, config: &Config) -> Result<Vec<u8>> {
-    // Load HTML content
-    let html_content = input.load()?;
+    use progress::ProgressStage;
 
-    // Parse HTML
-    let document = html::parse_html(&html_content)?;
+    // Get progress tracker or create no-op
+    let progress = config
+        .progress
+        .clone()
+        .unwrap_or_else(|| Arc::new(ProgressTracker::noop()));
 
-    // Parse CSS from document
-    let mut stylesheets = Vec::new();
+    // Stage 1: Loading
+    progress.begin_stage(ProgressStage::Loading);
+    progress.report_progress(0.0, format!("Loading from {}", input.description()));
     
-    // Add user stylesheets
-    for css in &config.user_stylesheets {
-        let stylesheet = css::parse_stylesheet(css)?;
-        stylesheets.push(stylesheet);
+    let html_content = input.load()?;
+    let input_bytes = html_content.len();
+    progress.update_stats(|s| s.input_bytes = input_bytes);
+    progress.report_progress(100.0, format!("Loaded {} bytes", input_bytes));
+    progress.end_current_stage();
+
+    // Stage 2: Parsing HTML
+    progress.begin_stage(ProgressStage::ParsingHtml);
+    progress.report_progress(0.0, "Starting HTML parsing");
+    
+    let mut document = html::parse_html(&html_content)?;
+    
+    // Count elements for stats
+    let element_count = document.element_count();
+    progress.update_stats(|s| s.elements_processed = element_count);
+    progress.report_progress(100.0, format!("Parsed {} elements", element_count));
+    progress.end_current_stage();
+
+    // Stage 3: Script Execution (optional)
+    if config.script_config.mode != ScriptMode::Disabled {
+        progress.begin_stage(ProgressStage::ExecutingScripts);
+        progress.report_progress(0.0, "Executing JavaScript");
+        
+        let mut engine = script::create_script_engine(config.script_config.sandbox.clone())?;
+        script::execute_scripts_on_document(&mut document, engine.as_mut())?;
+        
+        progress.report_progress(100.0, "Script execution complete");
+        progress.end_current_stage();
     }
 
-    // Create layout context
+    // Stage 4: Parsing CSS
+    progress.begin_stage(ProgressStage::ParsingCss);
+    progress.report_progress(0.0, "Starting CSS parsing");
+    
+    let mut stylesheets = Vec::new();
+    let mut css_rules = 0;
+    
+    // Add user stylesheets
+    for (i, css) in config.user_stylesheets.iter().enumerate() {
+        let percent = (i as f32 / config.user_stylesheets.len().max(1) as f32) * 100.0;
+        if !progress.report_progress(percent, format!("Parsing stylesheet {} of {}", i + 1, config.user_stylesheets.len())) {
+            return Err(types::PdfError::Layout("Conversion cancelled".to_string()));
+        }
+        
+        let stylesheet = css::parse_stylesheet(css)?;
+        css_rules += stylesheet.rules.len();
+        stylesheets.push(stylesheet);
+    }
+    
+    progress.update_stats(|s| s.css_rules_parsed = css_rules);
+    progress.report_progress(100.0, format!("Parsed {} CSS rules", css_rules));
+    progress.end_current_stage();
+
+    // Stage 4: Computing Styles
+    progress.begin_stage(ProgressStage::ComputingStyles);
+    progress.report_progress(50.0, "Computing element styles");
+    progress.end_current_stage();
+
+    // Stage 5: Building Layout Tree
+    progress.begin_stage(ProgressStage::BuildingLayout);
+    progress.report_progress(50.0, "Building box tree");
+    progress.update_stats(|s| s.layout_boxes_created = element_count);
+    progress.end_current_stage();
+
+    // Stage 6: Layout
+    progress.begin_stage(ProgressStage::LayingOut);
+    progress.report_progress(0.0, "Starting layout");
+    
     let layout_context = layout::LayoutContext::with_page_size(
         config.paper_size,
         config.orientation,
     ).with_margins(config.margins);
 
-    // Layout document
     let _layout_tree = layout::layout_document(&document, &stylesheets, Some(layout_context))?;
+    
+    progress.report_progress(100.0, "Layout complete");
+    progress.end_current_stage();
+
+    // Stage 7: Rendering
+    progress.begin_stage(ProgressStage::Rendering);
+    progress.report_progress(0.0, "Starting PDF rendering");
 
     // Generate PDF
     let mut writer = pdf::PdfWriter::new();
@@ -611,12 +1009,30 @@ pub fn html_to_pdf_from_input(input: &Input, config: &Config) -> Result<Vec<u8>>
 
     writer.add_page(content);
 
+    progress.update_stats(|s| s.pages_generated = 1);
+    progress.report_progress(100.0, "Rendered 1 page");
+    progress.end_current_stage();
+
+    // Stage 8: Writing PDF
+    progress.begin_stage(ProgressStage::WritingPdf);
+    progress.report_progress(50.0, "Writing PDF output");
+
     // Write output
     let mut output = std::io::Cursor::new(Vec::new());
     writer.write(&mut output)
         .map_err(types::PdfError::Io)?;
 
-    Ok(output.into_inner())
+    let pdf_bytes = output.into_inner();
+    let output_size = pdf_bytes.len();
+    progress.update_stats(|s| s.output_bytes = output_size);
+    progress.report_progress(100.0, format!("Wrote {} bytes", output_size));
+    progress.end_current_stage();
+
+    // Complete
+    progress.begin_stage(ProgressStage::Complete);
+    progress.report_progress(100.0, "Conversion complete");
+
+    Ok(pdf_bytes)
 }
 
 /// Command-line interface module

@@ -137,8 +137,17 @@ impl Document {
     }
 
     /// Get body element
-    pub fn body_element(&self) -> &Element {
-        self.body.as_ref().expect("Document has no body")
+    pub fn body_element(&self) -> Option<&Element> {
+        self.body.as_ref()
+    }
+    
+    /// Get body element or create it if missing
+    pub fn body_element_or_create(&mut self) -> &Element {
+        if self.body.is_none() {
+            let body = Element::new("body", Vec::new());
+            self.body = Some(body);
+        }
+        self.body.as_ref().unwrap()
     }
 
     /// Get head element
@@ -149,6 +158,21 @@ impl Document {
     /// Get element by ID
     pub fn get_element_by_id(&self, id: &str) -> Option<&Element> {
         self.document_element.as_ref()?.find_by_id(id)
+    }
+
+    /// Get mutable element by ID
+    pub fn get_element_by_id_mut(&mut self, id: &str) -> Option<&mut Element> {
+        self.document_element.as_mut()?.find_by_id_mut(id)
+    }
+
+    /// Set document title
+    pub fn set_title(&mut self, title: impl Into<String>) {
+        self.title = title.into();
+    }
+
+    /// Get document title
+    pub fn get_title(&self) -> &str {
+        &self.title
     }
 
     /// Get all elements with given tag name
@@ -167,6 +191,15 @@ impl Document {
             root.find_by_class_name(class_name, &mut result);
         }
         result
+    }
+
+    /// Count total number of elements in the document
+    pub fn element_count(&self) -> usize {
+        if let Some(root) = &self.document_element {
+            root.count_elements()
+        } else {
+            0
+        }
     }
 }
 
@@ -345,6 +378,87 @@ impl Element {
         None
     }
 
+    /// Find element by ID (recursive, mutable)
+    pub fn find_by_id_mut(&mut self, id: &str) -> Option<&mut Element> {
+        if self.id() == Some(id) {
+            return Some(self);
+        }
+        
+        for child in &mut self.children {
+            if let Node::Element(el) = child {
+                if let Some(found) = el.find_by_id_mut(id) {
+                    return Some(found);
+                }
+            }
+        }
+        
+        None
+    }
+
+    /// Remove a child node by index
+    pub fn remove_child_at(&mut self, index: usize) -> Option<Node> {
+        if index < self.children.len() {
+            Some(self.children.remove(index))
+        } else {
+            None
+        }
+    }
+
+    /// Insert a child node at a specific position
+    pub fn insert_child_at(&mut self, index: usize, child: Node) {
+        if index <= self.children.len() {
+            self.children.insert(index, child);
+        } else {
+            self.children.push(child);
+        }
+    }
+
+    /// Remove child element by reference (compares by node identity)
+    pub fn remove_child(&mut self, child_to_remove: &Element) -> bool {
+        let initial_len = self.children.len();
+        self.children.retain(|child| {
+            if let Node::Element(el) = child {
+                // Compare by tag name and id as a simple identity check
+                !(el.tag_name == child_to_remove.tag_name && el.id() == child_to_remove.id())
+            } else {
+                true
+            }
+        });
+        self.children.len() < initial_len
+    }
+
+    /// Query selector - find first element matching a simple selector
+    pub fn query_selector(&self, selector: &str) -> Option<&Element> {
+        // Check self first
+        if self.matches(selector) {
+            return Some(self);
+        }
+        
+        // Check children recursively
+        for child in &self.children {
+            if let Node::Element(el) = child {
+                if let Some(found) = el.query_selector(selector) {
+                    return Some(found);
+                }
+            }
+        }
+        
+        None
+    }
+
+    /// Query selector all - find all elements matching a simple selector
+    pub fn query_selector_all(&self, selector: &str, results: &mut Vec<&Element>) {
+        if self.matches(selector) {
+            results.push(self);
+        }
+        
+        for child in &self.children {
+            if let Node::Element(el) = child {
+                el.query_selector_all(selector, results);
+            }
+        }
+    }
+
     /// Find elements by tag name
     pub fn find_by_tag_name<'a>(&'a self, tag_name: &str, result: &mut Vec<&'a Element>) {
         if self.tag_name().eq_ignore_ascii_case(tag_name) {
@@ -426,6 +540,17 @@ impl Element {
         }
         
         false
+    }
+
+    /// Count all elements in this subtree (including self)
+    pub fn count_elements(&self) -> usize {
+        let mut count = 1; // Count self
+        for child in &self.children {
+            if let Node::Element(el) = child {
+                count += el.count_elements();
+            }
+        }
+        count
     }
 }
 
