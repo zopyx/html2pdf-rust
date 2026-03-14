@@ -185,7 +185,7 @@ impl Unit {
     }
 
     /// Parse unit from string
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "pt" => Some(Unit::Pt),
             "px" => Some(Unit::Px),
@@ -266,11 +266,11 @@ pub enum ColorValue {
 
 impl ColorValue {
     /// Convert to RGB tuple
-    pub fn to_rgb(&self) -> (u8, u8, u8) {
+    pub fn as_rgb(self) -> (u8, u8, u8) {
         match self {
             ColorValue::Named(name) => Self::named_color_to_rgb(name),
-            ColorValue::Rgb(r, g, b) => (*r, *g, *b),
-            ColorValue::Rgba(r, g, b, _) => (*r, *g, *b),
+            ColorValue::Rgb(r, g, b) => (r, g, b),
+            ColorValue::Rgba(r, g, b, _) => (r, g, b),
             ColorValue::Hex(hex) => {
                 let r = ((hex >> 16) & 0xFF) as u8;
                 let g = ((hex >> 8) & 0xFF) as u8;
@@ -376,10 +376,10 @@ mod tests {
     #[test]
     fn test_color_to_rgb() {
         let color = ColorValue::Rgb(255, 128, 0);
-        assert_eq!(color.to_rgb(), (255, 128, 0));
+        assert_eq!(color.as_rgb(), (255, 128, 0));
 
         let named = ColorValue::Named("red");
-        assert_eq!(named.to_rgb(), (255, 0, 0));
+        assert_eq!(named.as_rgb(), (255, 0, 0));
     }
 
     #[test]

@@ -5,7 +5,7 @@ use super::{
     stream::PdfStream,
     PageContent,
 };
-use crate::types::{PaperSize, Orientation, Margins, Result, PdfError};
+use crate::types::{PaperSize, Orientation, Margins};
 use std::collections::HashMap;
 use std::io::{self, Write};
 
@@ -252,7 +252,7 @@ impl PdfWriter {
             let offset = output.stream_position()? as u32;
             xref_offsets.push((reference.object_number, offset));
             
-            write!(output, "{} {} obj\n", reference.object_number, reference.generation)?;
+            writeln!(output, "{} {} obj", reference.object_number, reference.generation)?;
             
             // Handle streams specially
             match object {

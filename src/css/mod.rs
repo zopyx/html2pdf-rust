@@ -29,7 +29,7 @@ pub fn parse_rule(input: &str) -> Result<Rule> {
     parser.parse()
         .map(|stylesheet| {
             stylesheet.rules.into_iter().next()
-                .unwrap_or_else(|| Rule::StyleRule(StyleRule::default()))
+                .unwrap_or_else(|| Rule::style_rule(StyleRule::default()))
         })
 }
 
@@ -44,8 +44,8 @@ pub fn parse_value(input: &str) -> Result<CssValue> {
     }
     
     // Try to parse as percentage
-    if trimmed.ends_with('%') {
-        if let Ok(num) = trimmed[..trimmed.len()-1].parse() {
+    if let Some(stripped) = trimmed.strip_suffix('%') {
+        if let Ok(num) = stripped.parse() {
             return Ok(CssValue::Percentage(num));
         }
     }
@@ -81,24 +81,24 @@ pub fn parse_selector(input: &str) -> Result<Selector> {
 fn parse_length_value(s: &str) -> Option<(f32, Unit)> {
     let s = s.trim();
     
-    if s.ends_with("px") {
-        s[..s.len()-2].trim().parse().ok().map(|n| (n, Unit::Px))
-    } else if s.ends_with("pt") {
-        s[..s.len()-2].trim().parse().ok().map(|n| (n, Unit::Pt))
-    } else if s.ends_with("em") {
-        s[..s.len()-2].trim().parse().ok().map(|n| (n, Unit::Em))
-    } else if s.ends_with("rem") {
-        s[..s.len()-3].trim().parse().ok().map(|n| (n, Unit::Rem))
-    } else if s.ends_with("vw") {
-        s[..s.len()-2].trim().parse().ok().map(|n| (n, Unit::Vw))
-    } else if s.ends_with("vh") {
-        s[..s.len()-2].trim().parse().ok().map(|n| (n, Unit::Vh))
-    } else if s.ends_with("mm") {
-        s[..s.len()-2].trim().parse().ok().map(|n| (n, Unit::Mm))
-    } else if s.ends_with("cm") {
-        s[..s.len()-2].trim().parse().ok().map(|n| (n, Unit::Cm))
-    } else if s.ends_with("in") {
-        s[..s.len()-2].trim().parse().ok().map(|n| (n, Unit::In))
+    if let Some(stripped) = s.strip_suffix("px") {
+        stripped.trim().parse().ok().map(|n| (n, Unit::Px))
+    } else if let Some(stripped) = s.strip_suffix("pt") {
+        stripped.trim().parse().ok().map(|n| (n, Unit::Pt))
+    } else if let Some(stripped) = s.strip_suffix("em") {
+        stripped.trim().parse().ok().map(|n| (n, Unit::Em))
+    } else if let Some(stripped) = s.strip_suffix("rem") {
+        stripped.trim().parse().ok().map(|n| (n, Unit::Rem))
+    } else if let Some(stripped) = s.strip_suffix("vw") {
+        stripped.trim().parse().ok().map(|n| (n, Unit::Vw))
+    } else if let Some(stripped) = s.strip_suffix("vh") {
+        stripped.trim().parse().ok().map(|n| (n, Unit::Vh))
+    } else if let Some(stripped) = s.strip_suffix("mm") {
+        stripped.trim().parse().ok().map(|n| (n, Unit::Mm))
+    } else if let Some(stripped) = s.strip_suffix("cm") {
+        stripped.trim().parse().ok().map(|n| (n, Unit::Cm))
+    } else if let Some(stripped) = s.strip_suffix("in") {
+        stripped.trim().parse().ok().map(|n| (n, Unit::In))
     } else {
         None
     }

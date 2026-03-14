@@ -47,7 +47,7 @@ pub fn parse_html(input: &str) -> Result<Document> {
 }
 
 /// Parse HTML fragment with a given context element
-pub fn parse_fragment(input: &str, context_element: &str) -> Result<Vec<Node>> {
+pub fn parse_fragment(input: &str, _context_element: &str) -> Result<Vec<Node>> {
     let mut tokenizer = HtmlTokenizer::new(input);
     let mut nodes = Vec::new();
     

@@ -3,13 +3,14 @@
 //! Implements the tree construction phase of HTML5 parsing per WHATWG spec
 
 use super::{
-    dom::{Document, DocumentType, Element, Node, QuirksMode, Namespace, TextNode, Comment},
+    dom::{Document, DocumentType, Element, Node, QuirksMode, TextNode, Comment},
     tokenizer::Token,
-    is_void_element, is_raw_text_element, Attribute,
+    is_void_element, Attribute,
 };
 
 /// Insertion modes for the tree builder
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 enum InsertionMode {
     Initial,
     BeforeHtml,
@@ -44,7 +45,9 @@ pub struct TreeBuilder {
     open_elements: Vec<Element>,
     active_formatting_elements: Vec<FormattingElement>,
     head_element: Option<Element>,
+    #[allow(dead_code)]
     pending_table_character_tokens: Vec<char>,
+    #[allow(dead_code)]
     foster_parenting: bool,
     scripting_enabled: bool,
     frameset_ok: bool,
@@ -85,6 +88,7 @@ impl TreeBuilder {
     }
 
     /// Get adjusted current node (accounting for template)
+    #[allow(dead_code)]
     fn adjusted_current_node(&self) -> Option<&Element> {
         if self.insertion_mode == InsertionMode::InTemplate && 
            self.template_insertion_modes.last() == Some(&InsertionMode::InTemplate) {
@@ -119,9 +123,9 @@ impl TreeBuilder {
                 // Ignore whitespace
             }
             Token::Comment(text) => {
-                self.document.document_element.as_mut().map(|root| {
+                if let Some(root) = self.document.document_element.as_mut() {
                     root.append_child(Node::Comment(Comment::new(text)));
-                });
+                }
             }
             Token::Doctype { name, public_identifier, system_identifier, force_quirks } => {
                 let mut doctype = DocumentType::new(name.as_deref().unwrap_or(""));
@@ -155,7 +159,7 @@ impl TreeBuilder {
         &self,
         name: &Option<String>,
         public_id: &Option<String>,
-        system_id: &Option<String>,
+        _system_id: &Option<String>,
     ) -> QuirksMode {
         // Simplified quirks mode detection
         // Full implementation would check against the quirks mode doctype list
@@ -187,9 +191,9 @@ impl TreeBuilder {
                 // Ignore whitespace
             }
             Token::Comment(text) => {
-                self.document.document_element.as_mut().map(|root| {
+                if let Some(root) = self.document.document_element.as_mut() {
                     root.append_child(Node::Comment(Comment::new(text)));
-                });
+                }
             }
             Token::StartTag { name, .. } if name == "html" => {
                 let element = Element::new("html", Vec::new());
@@ -620,7 +624,7 @@ impl TreeBuilder {
                     // Will be handled by raw text parsing
                 }
             }
-            Token::StartTag { name, attributes, self_closing } if name == "xmp" => {
+            Token::StartTag { name, attributes: _, self_closing } if name == "xmp" => {
                 self.close_pelement_if_in_scope();
                 self.reconstruct_active_formatting();
                 self.frameset_ok = false;
@@ -629,7 +633,7 @@ impl TreeBuilder {
                     // Will be handled
                 }
             }
-            Token::StartTag { name, attributes, self_closing } if ["iframe", "noembed", "noframes"].contains(&name.as_str()) => {
+            Token::StartTag { name, attributes: _, self_closing } if ["iframe", "noembed", "noframes"].contains(&name.as_str()) => {
                 self.frameset_ok = false;
                 self.parse_raw_text(&name);
                 if self_closing {
@@ -718,7 +722,7 @@ impl TreeBuilder {
             Token::Text(text) => {
                 self.insert_text(&text);
             }
-            Token::EndTag { name } => {
+            Token::EndTag { name: _ } => {
                 self.open_elements.pop();
                 self.insertion_mode = self.original_insertion_mode.unwrap_or(InsertionMode::InBody);
             }
@@ -840,7 +844,7 @@ impl TreeBuilder {
     }
 
     /// Parse raw text
-    fn parse_raw_text(&mut self, name: &str) {
+    fn parse_raw_text(&mut self, _name: &str) {
         self.original_insertion_mode = Some(self.insertion_mode);
         self.insertion_mode = InsertionMode::Text;
     }

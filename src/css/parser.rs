@@ -75,27 +75,17 @@ pub enum Rule {
 
 impl Rule {
     /// Get the style rule variant
-    pub fn StyleRule(rule: StyleRule) -> Self {
+    pub fn style_rule(rule: StyleRule) -> Self {
         Rule::Style(rule)
     }
 }
 
 /// Style rule (selector + declarations)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct StyleRule {
     pub selector: Selector,
     pub declarations: Vec<Declaration>,
     pub important_flags: Vec<bool>, // Parallel to declarations
-}
-
-impl Default for StyleRule {
-    fn default() -> Self {
-        Self {
-            selector: Selector::new(),
-            declarations: Vec::new(),
-            important_flags: Vec::new(),
-        }
-    }
 }
 
 impl StyleRule {
@@ -163,6 +153,7 @@ impl Declaration {
 pub struct CssParser<'a> {
     tokens: Vec<CssToken>,
     position: usize,
+    #[allow(dead_code)]
     original_input: &'a str,
 }
 
@@ -177,7 +168,8 @@ impl<'a> CssParser<'a> {
     }
 
     /// Collect tokens from tokenizer
-    fn collect_tokens(tokenizer: &mut CssTokenizer) -> Vec<CssToken> {
+    #[allow(dead_code)]
+    fn collect_tokens(tokenizer: &mut CssTokenizer<'_>) -> Vec<CssToken> {
         let mut tokens = Vec::new();
         loop {
             let token = tokenizer.next_token();
@@ -694,7 +686,7 @@ impl<'a> CssParser<'a> {
         let value = self.consume_value()?;
 
         // Check for !important
-        let is_important = self.consume_important();
+        let _is_important = self.consume_important();
 
         // Consume semicolon (optional for last declaration)
         if self.peek() == Some(&CssToken::Semicolon) {
@@ -774,7 +766,7 @@ impl<'a> CssParser<'a> {
                 let n = *n as f32;
                 let unit = unit.clone();
                 self.advance();
-                if let Some(u) = Unit::from_str(&unit) {
+                if let Some(u) = Unit::parse(&unit) {
                     Ok(Some(CssValue::Length(n, u)))
                 } else {
                     Ok(Some(CssValue::Number(n)))
@@ -881,7 +873,7 @@ impl<'a> CssParser<'a> {
         use super::selectors::SelectorPart;
 
         let mut parts = Vec::new();
-        let mut combinator = None;
+        let mut _combinator = None;
 
         loop {
             self.consume_whitespace();
@@ -934,14 +926,14 @@ impl<'a> CssParser<'a> {
                 }
                 Some(CssToken::Comma) | Some(CssToken::OpenBrace) | None => break,
                 Some(CssToken::Delim(c)) if matches!(c, '>' | '+' | '~') => {
-                    combinator = Some(match c {
+                    _combinator = Some(match c {
                         '>' => super::selectors::Combinator::Child,
                         '+' => super::selectors::Combinator::Adjacent,
                         '~' => super::selectors::Combinator::GeneralSibling,
                         _ => unreachable!(),
                     });
                     self.advance();
-                    parts.push(SelectorPart::Combinator(combinator.unwrap()));
+                    parts.push(SelectorPart::Combinator(_combinator.unwrap()));
                 }
                 Some(CssToken::Whitespace) => {
                     self.consume_whitespace();

@@ -1,7 +1,5 @@
 //! Core types for HTML2PDF
 
-use std::fmt;
-
 /// A 2D point
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Point {
@@ -80,7 +78,7 @@ impl Rect {
 }
 
 /// CSS length value
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Length {
     Px(f32),
     Pt(f32),
@@ -90,6 +88,7 @@ pub enum Length {
     Em(f32),
     Rem(f32),
     Percent(f32),
+    #[default]
     Auto,
 }
 
@@ -119,12 +118,6 @@ impl Length {
 
     pub fn is_auto(&self) -> bool {
         matches!(self, Length::Auto)
-    }
-}
-
-impl Default for Length {
-    fn default() -> Self {
-        Length::Auto
     }
 }
 
@@ -190,12 +183,13 @@ impl Color {
 }
 
 /// Paper size definitions
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum PaperSize {
     A0,
     A1,
     A2,
     A3,
+    #[default]
     A4,
     A5,
     A6,
@@ -221,12 +215,6 @@ impl PaperSize {
             PaperSize::Tabloid => (792.0, 1224.0),
             PaperSize::Custom { width, height } => (width, height),
         }
-    }
-}
-
-impl Default for PaperSize {
-    fn default() -> Self {
-        PaperSize::A4
     }
 }
 

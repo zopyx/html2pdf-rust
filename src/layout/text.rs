@@ -4,7 +4,7 @@
 //! Implements Unicode line breaking and basic text metrics.
 
 use crate::types::Rect;
-use crate::layout::box_model::{LayoutBox, Dimensions};
+
 use crate::layout::style::{ComputedStyle, WhiteSpace, TextTransform};
 use unicode_width::UnicodeWidthChar;
 
@@ -142,7 +142,7 @@ impl LineBreaker {
     fn add_normal_text(&mut self, text: &str) {
         let words: Vec<&str> = text.split_whitespace().collect();
         
-        for (i, word) in words.iter().enumerate() {
+        for word in words.iter() {
             let word_width = self.measure_text(word);
             
             // Check if we need to break before this word

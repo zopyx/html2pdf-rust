@@ -4,13 +4,13 @@
 //! for the html2pdf conversion tool.
 
 use clap::{Parser, Subcommand, ValueEnum};
-use std::collections::HashMap;
+
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
-use tracing::{debug, error, info, warn, Level};
+use tracing::{debug, info, Level};
 
 use crate::{
-    html_to_pdf, html_to_pdf_from_input, Config, Input, Margins, Orientation, PaperSize,
+    html_to_pdf_from_input, Config, Input, Margins, Orientation, PaperSize,
     Result as PdfResult,
 };
 
@@ -360,7 +360,7 @@ fn print_default_config() {
 
 /// Setup logging/tracing
 fn setup_logging(verbose: bool) {
-    let level = if verbose {
+    let _level = if verbose {
         Level::DEBUG
     } else {
         Level::INFO
@@ -498,19 +498,19 @@ fn parse_length(s: &str) -> Result<f32, Box<dyn std::error::Error>> {
     }
 
     // Parse with unit
-    if s.ends_with("pt") {
-        Ok(s[..s.len() - 2].trim().parse()?)
-    } else if s.ends_with("mm") {
-        let mm: f32 = s[..s.len() - 2].trim().parse()?;
+    if let Some(stripped) = s.strip_suffix("pt") {
+        Ok(stripped.trim().parse()?)
+    } else if let Some(stripped) = s.strip_suffix("mm") {
+        let mm: f32 = stripped.trim().parse()?;
         Ok(mm * 2.834_646) // mm to points
-    } else if s.ends_with("cm") {
-        let cm: f32 = s[..s.len() - 2].trim().parse()?;
+    } else if let Some(stripped) = s.strip_suffix("cm") {
+        let cm: f32 = stripped.trim().parse()?;
         Ok(cm * 28.346_46) // cm to points
-    } else if s.ends_with("in") {
-        let inch: f32 = s[..s.len() - 2].trim().parse()?;
+    } else if let Some(stripped) = s.strip_suffix("in") {
+        let inch: f32 = stripped.trim().parse()?;
         Ok(inch * 72.0) // inches to points
-    } else if s.ends_with("px") {
-        let px: f32 = s[..s.len() - 2].trim().parse()?;
+    } else if let Some(stripped) = s.strip_suffix("px") {
+        let px: f32 = stripped.trim().parse()?;
         Ok(px * 0.75) // pixels to points (96 DPI)
     } else {
         Err(format!("Unknown length unit in: {}", s).into())
@@ -527,7 +527,7 @@ fn convert_with_progress(input: &Input, config: &Config) -> PdfResult<Vec<u8>> {
     eprintln!("OK ({} bytes)", html_content.len());
 
     eprint!("[2/4] Parsing document... ");
-    let document = crate::html::parse_html(&html_content).map_err(|e| {
+    let _document = crate::html::parse_html(&html_content).map_err(|e| {
         eprintln!("FAILED");
         e
     })?;
@@ -621,6 +621,7 @@ fn validate_input(input: &str) -> Result<(), Box<dyn std::error::Error>> {
 /// Helper module for checking if stdin/stdout is a TTY
 mod atty {
     #[derive(Clone, Copy)]
+    #[allow(dead_code)]
     pub enum Stream {
         Stdin,
         Stdout,
@@ -630,10 +631,7 @@ mod atty {
     pub fn is(stream: Stream) -> bool {
         // Simplified implementation
         // In production, use the atty crate
-        match stream {
-            Stream::Stderr => true,
-            _ => false,
-        }
+        matches!(stream, Stream::Stderr)
     }
 }
 

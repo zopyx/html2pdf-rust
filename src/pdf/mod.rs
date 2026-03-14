@@ -15,7 +15,7 @@ pub use writer::PdfWriter;
 pub use font::PdfFont;
 pub use image::PdfImage;
 
-use crate::types::{Color, Rect, Point, Size};
+use crate::types::{Color, Rect, Point};
 
 /// A PDF page content builder
 pub struct PageContent {

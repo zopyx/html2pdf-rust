@@ -50,6 +50,7 @@ impl Attribute {
 
 /// Node types
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum Node {
     Document(Document),
     DocumentType(DocumentType),
@@ -409,13 +410,13 @@ impl Element {
         }
         
         // ID selector
-        if simple_selector.starts_with('#') {
-            return self.id() == Some(&simple_selector[1..]);
+        if let Some(id) = simple_selector.strip_prefix('#') {
+            return self.id() == Some(id);
         }
         
         // Class selector
-        if simple_selector.starts_with('.') {
-            return self.has_class(&simple_selector[1..]);
+        if let Some(class) = simple_selector.strip_prefix('.') {
+            return self.has_class(class);
         }
         
         // Attribute selector [attr]

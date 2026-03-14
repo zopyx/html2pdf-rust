@@ -18,6 +18,15 @@ A from-scratch Rust HTML to PDF converter with full W3C PrintCSS (Paged Media) s
 - **High Performance** - Written in Rust with zero external dependencies for PDF generation
 - **Command-Line & Library** - Use as a CLI tool or integrate as a Rust library
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [User Guide](docs/USER_GUIDE.md) | Complete user guide with installation, CLI usage, and examples |
+| [CSS Support Reference](docs/CSS_SUPPORT.md) | Complete CSS property and selector reference |
+| [PrintCSS Guide](docs/PRINTCSS_GUIDE.md) | In-depth tutorial for CSS Paged Media |
+| [API Guide](docs/API_GUIDE.md) | Library usage guide for Rust developers |
+
 ## Installation
 
 ### From Source
@@ -175,7 +184,9 @@ curl -s https://example.com | html2pdf - -o output.pdf
 
 ## PrintCSS Support
 
-html2pdf fully supports the CSS Paged Media specification:
+html2pdf fully supports the CSS Paged Media specification. See the [PrintCSS Guide](docs/PRINTCSS_GUIDE.md) for a comprehensive tutorial.
+
+### @page Rules
 
 ### @page Rules
 
@@ -249,6 +260,8 @@ h1, h2, h3 {
 ```
 
 ## Library Usage
+
+For detailed library usage, see the [API Guide](docs/API_GUIDE.md).
 
 Add to your `Cargo.toml`:
 

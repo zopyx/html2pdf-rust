@@ -1,6 +1,6 @@
 //! PDF image handling
 
-use super::{PdfDictionary, PdfObject, PdfStream, PdfReference};
+use super::{PdfDictionary, PdfObject, PdfStream};
 use crate::types::Result;
 
 /// PDF Image XObject
@@ -43,6 +43,7 @@ impl ColorSpace {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(clippy::enum_variant_names)]
 pub enum ImageFilter {
     FlateDecode,
     DCTDecode, // JPEG
@@ -118,7 +119,7 @@ impl PdfImage {
     /// Load from PNG data
     pub fn from_png(data: &[u8]) -> Result<Self> {
         // Parse PNG header
-        if data.len() < 8 || &data[0..8] != &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+        if data.len() < 8 || data[0..8] != [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
             return Err(crate::types::PdfError::Image("Invalid PNG signature".to_string()));
         }
 

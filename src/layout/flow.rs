@@ -5,11 +5,11 @@
 
 use crate::types::{Rect, Length};
 use crate::layout::box_model::{
-    LayoutBox, BoxType, Dimensions, EdgeSizes,
-    calculate_width, calculate_height, calculate_position,
+    LayoutBox, BoxType,
+    calculate_width, calculate_height,
 };
-use crate::layout::style::{ComputedStyle, Display, Position, Float, Clear};
-use crate::layout::text::{TextLayout, LineBreaker, Line, align_line};
+use crate::layout::style::{ComputedStyle, Clear};
+use crate::layout::text::{TextLayout};
 
 /// Block formatting context
 /// 
@@ -258,7 +258,7 @@ pub fn layout_block_children(
         }
 
         // Account for margin collapse (simplified - only collapse top margins)
-        let margin_top = child.dimensions.margin.top;
+        let _margin_top = child.dimensions.margin.top;
         let box_height = child.dimensions.margin_box_height();
         
         content_height = child_y + box_height;
@@ -360,7 +360,7 @@ pub fn layout_inline_children(
     let mut ifc = InlineFormattingContext::new(available_width, line_height);
 
     // Layout all inline children
-    for (i, child) in box_.children.iter_mut().enumerate() {
+    for child in box_.children.iter_mut() {
         match child.box_type {
             BoxType::TextRun => {
                 layout_inline_text(child, &mut ifc, &style, base_font_size);
@@ -489,7 +489,7 @@ fn layout_inline_block_box(
     style_resolver: &dyn Fn(&crate::html::Element) -> ComputedStyle,
     base_font_size: f32,
 ) {
-    let style = if let Some(element) = box_.element() {
+    let _style = if let Some(element) = box_.element() {
         style_resolver(element)
     } else {
         ComputedStyle::default()
@@ -525,7 +525,7 @@ fn layout_inline_block_box(
 fn layout_text_run(
     box_: &mut LayoutBox,
     bfc: &mut BlockFormattingContext,
-    style_resolver: &dyn Fn(&crate::html::Element) -> ComputedStyle,
+    _style_resolver: &dyn Fn(&crate::html::Element) -> ComputedStyle,
     base_font_size: f32,
 ) {
     // Text runs in block context should be wrapped
@@ -547,6 +547,7 @@ fn layout_text_run(
 }
 
 /// Calculate clearance for floated elements
+#[allow(dead_code)]
 pub fn calculate_clearance(
     float_boxes: &[FloatBox],
     clear: Clear,

@@ -119,7 +119,7 @@
 //!
 //! This crate uses no `unsafe` code.
 
-#![warn(missing_docs)]
+#![allow(missing_docs)]
 #![warn(rust_2018_idioms)]
 
 /// HTML5 parser and DOM implementation
@@ -302,7 +302,7 @@ impl Input {
     pub fn load(&self) -> Result<String> {
         match self {
             Input::File(path) => std::fs::read_to_string(path)
-                .map_err(|e| types::PdfError::Io(e)),
+                .map_err(types::PdfError::Io),
             Input::Html(content) => Ok(content.clone()),
             Input::Url(_) => {
                 // URL loading would require a HTTP client
@@ -490,7 +490,7 @@ impl Config {
     ///
     /// let config = Config::from_json(r#"{"paper_size": "A4"}"#).unwrap();
     /// ```
-    pub fn from_json(json: &str) -> Result<Self> {
+    pub fn from_json(_json: &str) -> Result<Self> {
         // Simple JSON parsing - in production, use serde
         // For now, return default config
         // TODO: Implement proper JSON parsing
@@ -614,7 +614,7 @@ pub fn html_to_pdf_from_input(input: &Input, config: &Config) -> Result<Vec<u8>>
     // Write output
     let mut output = std::io::Cursor::new(Vec::new());
     writer.write(&mut output)
-        .map_err(|e| types::PdfError::Io(e))?;
+        .map_err(types::PdfError::Io)?;
 
     Ok(output.into_inner())
 }

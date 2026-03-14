@@ -4,7 +4,7 @@
 //! Handles box tree construction from DOM and box dimensions calculations.
 
 use crate::html::{Element, Node, TextNode};
-use crate::types::{Rect, Size, Point, Length};
+use crate::types::{Rect, Length};
 
 /// Type of layout box
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -440,6 +440,7 @@ pub fn calculate_width(
 }
 
 /// Calculate height based on content or specified value
+#[allow(clippy::too_many_arguments)]
 pub fn calculate_height(
     box_: &mut LayoutBox,
     containing_block_height: f32,
@@ -492,6 +493,7 @@ pub fn calculate_position(
 }
 
 /// Shrink-to-fit width calculation
+#[allow(dead_code)]
 pub fn shrink_to_fit_width(box_: &LayoutBox, available_width: f32) -> f32 {
     // For block boxes with auto width in certain contexts
     // Returns the preferred minimum width based on content

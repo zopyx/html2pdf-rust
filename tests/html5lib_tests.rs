@@ -5,9 +5,9 @@
 
 use html2pdf::html::{
     parse_html, parse_fragment, HtmlTokenizer, Token, 
-    is_void_element, is_block_element, is_inline_element
+    is_void_element, is_block_element, is_inline_element,
+    Node, Element, Document
 };
-use html2pdf::html::dom::{Node, Element, Attribute, Document};
 
 // ============================================================================
 // Tokenizer Tests
@@ -118,29 +118,33 @@ fn test_tokenizer_text() {
 // ============================================================================
 
 /// Test data format: (input, expected_document_structure)
-type TreeTest = (&'static str, Vec<&'static str>);
+#[derive(Debug)]
+struct TreeTest {
+    input: &'static str,
+    expected: &'static [&'static str],
+}
 
 const TREE_CONSTRUCTION_TESTS: &[TreeTest] = &[
     // Basic structure
-    ("<html><head></head><body></body></html>", vec!["html", "head", "body"]),
+    TreeTest { input: "<html><head></head><body></body></html>", expected: &["html", "head", "body"] },
     // Auto-insertion of html, head, body
-    ("", vec!["html", "head", "body"]),
+    TreeTest { input: "", expected: &["html", "head", "body"] },
     // Implied elements
-    ("<p>Test</p>", vec!["html", "head", "body", "p"]),
+    TreeTest { input: "<p>Test</p>", expected: &["html", "head", "body", "p"] },
     // Nested elements
-    ("<div><p><span>Text</span></p></div>", vec!["html", "head", "body", "div", "p", "span"]),
+    TreeTest { input: "<div><p><span>Text</span></p></div>", expected: &["html", "head", "body", "div", "p", "span"] },
 ];
 
 #[test]
 fn test_tree_construction_basic() {
-    for (input, expected_elements) in TREE_CONSTRUCTION_TESTS.iter().take(3) {
-        let doc = parse_html(input).expect("Failed to parse HTML");
+    for test in TREE_CONSTRUCTION_TESTS.iter().take(3) {
+        let doc = parse_html(test.input).expect("Failed to parse HTML");
         
         // Check that document has expected structure
         assert!(doc.document_element.is_some(), "Document should have root element");
         assert!(doc.body.is_some(), "Document should have body");
         
-        let root = doc.root_element();
+        let root = doc.document_element.as_ref().expect("Document should have root element");
         assert_eq!(root.tag_name(), "html");
     }
 }
@@ -164,7 +168,7 @@ fn test_tree_foster_parenting() {
     let html = "<table><div>Test</div></table>";
     let doc = parse_html(html).unwrap();
     
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     // The div should end up in the body, not the table
     let divs: Vec<_> = body.children.iter()
         .filter_map(|n| n.as_element())
@@ -181,8 +185,8 @@ fn test_tree_script_style_rawtext() {
     let html = r#"<script>var x = "<div>test</div>";</script>"#;
     let doc = parse_html(html).unwrap();
     
-    let body = doc.body_element();
-    if let Some(Node::Element(script)) = body.children.first() {
+    let body = doc.body.as_ref().expect("Document should have body");
+    if let Some(Node::Element(script)) = body.children().first() {
         assert_eq!(script.tag_name(), "script");
         // Should have text content, not parsed as HTML
         assert!(!script.children.is_empty());
@@ -296,12 +300,12 @@ fn test_void_element_parsing() {
     let html = r#"<p>Line 1<br>Line 2<img src="test.jpg"><input type="text"></p>"#;
     let doc = parse_html(html).unwrap();
     
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     assert_eq!(body.children.len(), 1); // The p element
     
-    if let Some(Node::Element(p)) = body.children.first() {
+    if let Some(Node::Element(p)) = body.children().first() {
         // p should contain text, br, text, img, input
-        assert!(p.children.len() >= 5);
+        assert!(p.children().len() >= 5);
     }
 }
 
@@ -337,12 +341,12 @@ fn test_inline_element_detection() {
 
 #[test]
 fn test_svg_namespace() {
-    use html2pdf::html::dom::Namespace;
+    use html2pdf::html::Namespace;
     
     let html = r#"<svg><circle cx="50" cy="50" r="40"/></svg>"#;
     let doc = parse_html(html).unwrap();
     
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     // SVG handling depends on implementation
     assert!(!body.children.is_empty());
 }
@@ -352,7 +356,7 @@ fn test_mathml_namespace() {
     let html = r#"<math><mi>x</mi><mo>=</mo><mn>5</mn></math>"#;
     let doc = parse_html(html).unwrap();
     
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     assert!(!body.children.is_empty());
 }
 
@@ -366,7 +370,7 @@ fn test_template_element() {
     let doc = parse_html(html).unwrap();
     
     // Template content should be stored separately
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     let has_template = body.children.iter()
         .filter_map(|n| n.as_element())
         .any(|e| e.tag_name() == "template");
@@ -389,13 +393,13 @@ fn test_form_parsing() {
     "#;
     
     let doc = parse_html(html).unwrap();
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     
-    if let Some(Node::Element(form)) = body.children.first() {
+    if let Some(Node::Element(form)) = body.children().first() {
         assert_eq!(form.tag_name(), "form");
         assert!(form.attr("action").is_some());
         
-        let inputs: Vec<_> = form.children.iter()
+        let inputs: Vec<_> = form.children().iter()
             .filter_map(|n| n.as_element())
             .filter(|e| e.tag_name() == "input")
             .collect();
@@ -422,9 +426,9 @@ fn test_table_structure() {
     "#;
     
     let doc = parse_html(html).unwrap();
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     
-    if let Some(Node::Element(table)) = body.children.first() {
+    if let Some(Node::Element(table)) = body.children().first() {
         assert_eq!(table.tag_name(), "table");
     }
 }
@@ -447,7 +451,7 @@ fn test_named_character_references() {
         let html = format!("<p>{}</p>", entity);
         let doc = parse_html(&html).unwrap();
         
-        let body = doc.body_element();
+        let body = doc.body.as_ref().expect("Document should have body");
         // Entity decoding verification depends on implementation
         assert!(!body.children.is_empty());
     }
@@ -465,7 +469,7 @@ fn test_numeric_character_references() {
         let html = format!("<p>{}</p>", entity);
         let doc = parse_html(&html).unwrap();
         
-        let body = doc.body_element();
+        let body = doc.body.as_ref().expect("Document should have body");
         assert!(!body.children.is_empty());
     }
 }
@@ -479,7 +483,7 @@ fn test_unclosed_tags() {
     let html = "<p>First<p>Second<p>Third";
     let doc = parse_html(html).unwrap();
     
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     // Should have three p elements
     let paragraphs: Vec<_> = body.children.iter()
         .filter_map(|n| n.as_element())
@@ -494,7 +498,7 @@ fn test_misnested_tags() {
     let html = "<p><b>Bold<i>Bold+Italic</b>Italic</i></p>";
     let doc = parse_html(html).unwrap();
     
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     assert!(!body.children.is_empty());
     // Reconstruction algorithm should fix nesting
 }
@@ -504,7 +508,7 @@ fn test_unclosed_comments() {
     let html = "<!-- Unclosed comment";
     let doc = parse_html(html).unwrap();
     
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     assert!(!body.children.is_empty());
 }
 
@@ -538,7 +542,7 @@ fn test_adoption_agency_basic() {
     let html = "<p><b><i>One</b>Two</i></p>";
     let doc = parse_html(html).unwrap();
     
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     assert!(!body.children.is_empty());
     // The document should have a valid tree structure after reconstruction
 }
@@ -549,7 +553,7 @@ fn test_adoption_agency_basic() {
 
 #[test]
 fn test_quirks_mode_detection() {
-    use html2pdf::html::dom::QuirksMode;
+    use html2pdf::html::QuirksMode;
     
     // No doctype triggers quirks mode
     let doc = parse_html("<html></html>").unwrap();
@@ -580,7 +584,7 @@ fn test_style_element_content() {
     "#;
     
     let doc = parse_html(html).unwrap();
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     
     // Find style element
     let has_style = body.children.iter()
@@ -610,7 +614,7 @@ fn test_large_document_parsing() {
     // Should parse in reasonable time (< 1 second)
     assert!(elapsed.as_secs() < 1, "Large document parsing took too long: {:?}", elapsed);
     
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     assert!(body.children.len() >= 1000);
 }
 
@@ -628,7 +632,7 @@ fn test_deeply_nested_parsing() {
     }
     
     let doc = parse_html(&html).unwrap();
-    let body = doc.body_element();
+    let body = doc.body.as_ref().expect("Document should have body");
     
     // Should handle deep nesting without stack overflow
     assert!(!body.children.is_empty());
@@ -659,7 +663,8 @@ fn test_no_panic_on_garbage_input() {
         "&#x",
         "&#1234567890;",
         "\x00\x01\x02",
-        "\xFF\xFE",
+        // Invalid UTF-8 sequences need to be handled differently
+        // "\xFF\xFE", - removed as invalid Rust string literal
     ];
     
     for input in &garbage_inputs {

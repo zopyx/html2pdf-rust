@@ -8,7 +8,7 @@ use crate::css::{
     CssValue, Unit,
 };
 use crate::css::parser::StyleRule;
-use crate::html::{Element, Node};
+use crate::html::{Element};
 use crate::layout::box_model::BoxType;
 use crate::types::{Color, Length};
 
@@ -174,19 +174,14 @@ pub enum BorderStyle {
 }
 
 /// Font weight
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum FontWeight {
+    #[default]
     Normal,
     Bold,
     Bolder,
     Lighter,
     Number(u16),
-}
-
-impl Default for FontWeight {
-    fn default() -> Self {
-        FontWeight::Normal
-    }
 }
 
 /// Font style
@@ -199,17 +194,12 @@ pub enum FontStyle {
 }
 
 /// Line height
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum LineHeight {
+    #[default]
     Normal,
     Number(f32),
     Length(Length),
-}
-
-impl Default for LineHeight {
-    fn default() -> Self {
-        LineHeight::Normal
-    }
 }
 
 /// Text alignment
@@ -300,16 +290,11 @@ pub enum Overflow {
 }
 
 /// Z-index
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum ZIndex {
+    #[default]
     Auto,
     Number(i32),
-}
-
-impl Default for ZIndex {
-    fn default() -> Self {
-        ZIndex::Auto
-    }
 }
 
 /// Page break
@@ -622,7 +607,7 @@ impl StyleResolver {
 
     /// Apply author styles from stylesheets
     fn apply_author_styles(&self, element: &Element, style: &mut ComputedStyle) {
-        let mut matching_rules: Vec<MatchingRule> = Vec::new();
+        let mut matching_rules: Vec<MatchingRule<'_>> = Vec::new();
 
         // Collect all matching rules from all stylesheets
         for stylesheet in &self.stylesheets {
@@ -841,9 +826,9 @@ fn parse_clear(value: &CssValue) -> Clear {
 fn parse_length(value: &CssValue) -> Length {
     match value {
         CssValue::Length(n, unit) => Length::from_css_value(*n as f64, *unit),
-        CssValue::Number(n) => Length::Px(*n as f32),
+        CssValue::Number(n) => Length::Px(*n),
         CssValue::Ident(s) if s == "auto" => Length::Auto,
-        CssValue::Percentage(p) => Length::Percent(*p as f32),
+        CssValue::Percentage(p) => Length::Percent(*p),
         _ => Length::Auto,
     }
 }
@@ -924,7 +909,7 @@ fn parse_font_style(value: &CssValue) -> FontStyle {
 
 fn parse_line_height(value: &CssValue) -> LineHeight {
     match value {
-        CssValue::Number(n) => LineHeight::Number(*n as f32),
+        CssValue::Number(n) => LineHeight::Number(*n),
         CssValue::Ident(s) if s == "normal" => LineHeight::Normal,
         _ => LineHeight::Length(parse_length(value)),
     }
@@ -1087,7 +1072,7 @@ fn parse_page_break_inside(value: &CssValue) -> PageBreakInside {
 
 fn parse_number(value: &CssValue, default: f32) -> f32 {
     match value {
-        CssValue::Number(n) => *n as f32,
+        CssValue::Number(n) => *n,
         _ => default,
     }
 }

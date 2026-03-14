@@ -43,8 +43,8 @@ pub use text::{
 };
 
 use crate::css::Stylesheet;
-use crate::html::{Document, Element, Node};
-use crate::types::{Rect, Size, Point, PaperSize, Margins, Orientation, PdfError, Result};
+use crate::html::{Document, Element};
+use crate::types::{Rect, Size, PaperSize, Margins, Orientation, Result};
 
 /// Layout context holds global layout state
 #[derive(Debug, Clone)]

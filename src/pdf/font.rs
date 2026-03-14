@@ -1,7 +1,7 @@
 //! PDF font handling
 
 use super::PdfDictionary;
-use crate::types::Result;
+
 
 /// PDF Font representation
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +76,7 @@ impl PdfFont {
 }
 
 /// Standard PDF font names
+#[allow(dead_code)]
 pub const STANDARD_FONTS: &[&str] = &[
     "Courier",
     "Courier-Bold",
@@ -94,11 +95,13 @@ pub const STANDARD_FONTS: &[&str] = &[
 ];
 
 /// Check if a font is a standard PDF font
+#[allow(dead_code)]
 pub fn is_standard_font(name: &str) -> bool {
     STANDARD_FONTS.contains(&name)
 }
 
 /// Font metrics (simplified - in production would load from AFM files)
+#[allow(dead_code)]
 pub struct FontMetrics {
     pub widths: std::collections::HashMap<char, u16>,
     pub default_width: u16,
@@ -108,6 +111,7 @@ pub struct FontMetrics {
     pub cap_height: i16,
 }
 
+#[allow(dead_code)]
 impl FontMetrics {
     /// Create metrics for Helvetica (approximate values)
     pub fn helvetica() -> Self {

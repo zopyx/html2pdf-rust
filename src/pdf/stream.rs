@@ -42,6 +42,7 @@ impl PdfStream {
 }
 
 /// Trait for stream encoding
+#[allow(dead_code)]
 pub trait StreamEncode {
     fn encode(&self, data: &[u8]) -> Vec<u8>;
     fn filter_name(&self) -> &'static str;
@@ -49,6 +50,7 @@ pub trait StreamEncode {
 
 /// Flate (zlib) compression encoder
 pub struct FlateEncode {
+    #[allow(dead_code)]
     level: u8,
 }
 
@@ -79,6 +81,7 @@ impl StreamEncode for FlateEncode {
 }
 
 /// Encode a stream with the given encoder
+#[allow(dead_code)]
 pub fn encode_stream(encoder: &dyn StreamEncode, data: &[u8]) -> (Vec<u8>, String) {
     let encoded = encoder.encode(data);
     let filter_name = encoder.filter_name().to_string();
@@ -87,6 +90,7 @@ pub fn encode_stream(encoder: &dyn StreamEncode, data: &[u8]) -> (Vec<u8>, Strin
 
 /// Predictor filter for image data
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 pub enum Predictor {
     None = 1,
     Tiff = 2,
@@ -99,6 +103,7 @@ pub enum Predictor {
 }
 
 impl Predictor {
+    #[allow(dead_code)]
     pub fn apply(&self, data: &[u8], width: usize, components: usize) -> Vec<u8> {
         match self {
             Predictor::None | Predictor::Tiff => data.to_vec(),
@@ -118,7 +123,7 @@ impl Predictor {
             Predictor::PngUp => {
                 // PNG Up: difference from pixel above
                 let row_size = width * components;
-                let rows = (data.len() + row_size - 1) / row_size;
+                let rows = data.len().div_ceil(row_size);
                 let mut result = Vec::with_capacity(data.len() + rows);
                 let mut prev_row = vec![0u8; row_size];
                 

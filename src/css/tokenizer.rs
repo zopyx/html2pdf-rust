@@ -80,6 +80,7 @@ pub struct CssTokenizer<'a> {
 }
 
 impl<'a> CssTokenizer<'a> {
+    /// Create a new CSS tokenizer
     pub fn new(input: &'a str) -> Self {
         Self {
             input,
@@ -174,14 +175,7 @@ impl<'a> CssTokenizer<'a> {
                 'a'..='z' | 'A'..='Z' | '_' | '\u{80}'..=char::MAX => {
                     self.consume_ident_like()
                 }
-                '/' => {
-                    self.consume();
-                    if self.peek() == Some('*') {
-                        self.consume_comment()
-                    } else {
-                        CssToken::Delim('/')
-                    }
-                }
+        
                 '*' => {
                     self.consume();
                     if self.peek() == Some('=') {
@@ -304,7 +298,7 @@ impl<'a> CssTokenizer<'a> {
         if self.would_start_ident() {
             // Negative number with ident, or ident starting with -
             self.consume_ident_like_prefixed("-")
-        } else if self.peek().map_or(false, |c| c.is_ascii_digit()) {
+        } else if self.peek().is_some_and(|c| c.is_ascii_digit()) {
             // Negative number
             let number = self.consume_number();
             let sign = -1.0;
@@ -323,7 +317,7 @@ impl<'a> CssTokenizer<'a> {
             self.consume();
             self.consume();
             CssToken::CDC
-        } else if self.peek() == Some('.') && self.input[self.position..].chars().nth(1).map_or(false, |c| c.is_ascii_digit()) {
+        } else if self.peek() == Some('.') && self.input[self.position..].chars().nth(1).is_some_and(|c| c.is_ascii_digit()) {
             // Negative decimal
             self.consume(); // .
             let number = self.consume_number();
@@ -440,6 +434,7 @@ impl<'a> CssTokenizer<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn consume_comment(&mut self) -> CssToken {
         // Already consumed /*
         self.consume(); // *
@@ -502,7 +497,7 @@ impl<'a> CssTokenizer<'a> {
         value_str.push_str(&self.consume_while(|c| c.is_ascii_digit()));
         
         // Decimal part
-        if self.peek() == Some('.') && self.input[self.position..].chars().nth(1).map_or(false, |c| c.is_ascii_digit()) {
+        if self.peek() == Some('.') && self.input[self.position..].chars().nth(1).is_some_and(|c| c.is_ascii_digit()) {
             value_str.push(self.consume().unwrap());
             value_str.push_str(&self.consume_while(|c| c.is_ascii_digit()));
             is_integer = false;
@@ -572,9 +567,7 @@ impl<'a> CssTokenizer<'a> {
                     Some(c) if Self::is_ident_start_char(c) => return true,
                     _ => {}
                 }
-            } else if Self::is_ident_start_char(c) {
-                return true;
-            } else if c == '\\' {
+            } else if Self::is_ident_start_char(c) || c == '\\' {
                 return true;
             }
         }
@@ -596,6 +589,7 @@ struct NumberResult {
 }
 
 /// Collect all tokens from input
+#[allow(dead_code)]
 pub fn tokenize(input: &str) -> Vec<CssToken> {
     let mut tokenizer = CssTokenizer::new(input);
     let mut tokens = Vec::new();

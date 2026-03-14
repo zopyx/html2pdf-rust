@@ -4,7 +4,7 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use html2pdf::pdf::{PdfWriter, PageContent};
-use html2pdf::types::{Rect, Point, Color, PaperSize, Orientation};
+use html2pdf::{Rect, Point, Color, PaperSize, Orientation};
 
 fn benchmark_single_page(c: &mut Criterion) {
     c.bench_function("pdf_single_page_simple", |b| {
@@ -22,7 +22,7 @@ fn benchmark_single_page(c: &mut Criterion) {
             
             writer.add_page(content);
             
-            let mut output = Vec::new();
+            let mut output = std::io::Cursor::new(Vec::new());
             let _ = writer.write(black_box(&mut output));
         });
     });
@@ -93,7 +93,7 @@ fn benchmark_drawing_operations(c: &mut Criterion) {
             
             writer.add_page(content);
             
-            let mut output = Vec::new();
+            let mut output = std::io::Cursor::new(Vec::new());
             let _ = writer.write(black_box(&mut output));
         });
     });
@@ -117,7 +117,7 @@ fn benchmark_text_rendering(c: &mut Criterion) {
             content.end_text();
             writer.add_page(content);
             
-            let mut output = Vec::new();
+            let mut output = std::io::Cursor::new(Vec::new());
             let _ = writer.write(black_box(&mut output));
         });
     });
@@ -174,7 +174,7 @@ fn benchmark_font_embedding(c: &mut Criterion) {
             content.end_text();
             writer.add_page(content);
             
-            let mut output = Vec::new();
+            let mut output = std::io::Cursor::new(Vec::new());
             let _ = writer.write(black_box(&mut output));
         });
     });

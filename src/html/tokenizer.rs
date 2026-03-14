@@ -2,8 +2,6 @@
 //!
 //! Implements the tokenization rules from the WHATWG HTML5 specification
 
-use std::collections::HashMap;
-
 /// HTML Token types
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -28,6 +26,7 @@ pub enum Token {
 
 /// Tokenizer state machine states
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 enum State {
     Data,
     TagOpen,
@@ -54,6 +53,7 @@ enum State {
     BeforeDoctypeName,
     DoctypeName,
     AfterDoctypeName,
+    // These are part of full HTML5 spec but not fully implemented
     AfterDoctypePublicKeyword,
     BeforeDoctypePublicIdentifier,
     DoctypePublicIdentifierDoubleQuoted,
@@ -77,7 +77,9 @@ pub struct HtmlTokenizer<'a> {
     input: &'a str,
     position: usize,
     state: State,
+    #[allow(dead_code)]
     return_state: Option<State>,
+    #[allow(dead_code)]
     current_token: Option<Token>,
     current_tag_name: String,
     current_tag_self_closing: bool,
@@ -86,6 +88,7 @@ pub struct HtmlTokenizer<'a> {
     attributes: Vec<super::Attribute>,
     temporary_buffer: String,
     current_comment: String,
+    #[allow(dead_code)]
     character_reference_code: u32,
     last_emitted_start_tag: String,
 }
@@ -128,6 +131,7 @@ impl<'a> HtmlTokenizer<'a> {
     }
 
     /// Consume expected string
+    #[allow(dead_code)]
     fn consume_str(&mut self, s: &str) -> bool {
         if self.peek_matches(s) {
             self.position += s.len();
@@ -1015,6 +1019,7 @@ impl<'a> HtmlTokenizer<'a> {
 }
 
 /// Character entity references (simplified)
+#[allow(dead_code)]
 pub fn decode_entity(entity: &str) -> Option<char> {
     match entity {
         "amp" => Some('&'),
